@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { createContext, useContext, useEffect, useRef, useMemo, useState } from 'react';
-import { StyleSheet, Animated, TouchableOpacity, Text, Modal, View, StatusBar, FlatList, RefreshControl, KeyboardAvoidingView, ActivityIndicator, ScrollView, TextInput, Platform, Alert } from 'react-native';
-import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
+import { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
+import { StyleSheet, Modal, View, StatusBar, Text, TouchableOpacity, Platform, FlatList, RefreshControl, SectionList, KeyboardAvoidingView, ScrollView, TextInput, ActivityIndicator, Animated, Alert } from 'react-native';
+import { jsxs, jsx } from 'react/jsx-runtime';
 
 // src/state/store.ts
 var defaultColors = {
@@ -25,6 +25,7 @@ var defaultColors = {
   error: "#EF4444",
   info: "#3B82F6",
   // Feature status
+  statusOpen: "#3B82F6",
   statusUnderReview: "#8B5CF6",
   statusPlanned: "#3B82F6",
   statusInProgress: "#F59E0B",
@@ -37,9 +38,7 @@ var defaultColors = {
   overlay: "rgba(15, 23, 42, 0.5)",
   // Interactive
   upvote: "#94A3B8",
-  upvoteActive: "#6366F1",
-  subscribe: "#94A3B8",
-  subscribeActive: "#F59E0B"
+  upvoteActive: "#6366F1"
 };
 var darkColors = {
   // Base
@@ -62,6 +61,7 @@ var darkColors = {
   error: "#F87171",
   info: "#60A5FA",
   // Feature status
+  statusOpen: "#60A5FA",
   statusUnderReview: "#A78BFA",
   statusPlanned: "#60A5FA",
   statusInProgress: "#FBBF24",
@@ -74,9 +74,7 @@ var darkColors = {
   overlay: "rgba(0, 0, 0, 0.7)",
   // Interactive
   upvote: "#64748B",
-  upvoteActive: "#818CF8",
-  subscribe: "#64748B",
-  subscribeActive: "#FBBF24"
+  upvoteActive: "#818CF8"
 };
 var defaultSpacing = {
   xs: 4,
@@ -137,6 +135,7 @@ function mergeTheme(baseTheme, customTheme) {
 }
 function getStatusColor(status, colors) {
   const statusColorMap = {
+    open: colors.statusOpen,
     under_review: colors.statusUnderReview,
     planned: colors.statusPlanned,
     in_progress: colors.statusInProgress,
@@ -147,6 +146,7 @@ function getStatusColor(status, colors) {
 }
 function getStatusLabel(status) {
   const statusLabelMap = {
+    open: "Open",
     under_review: "Under Review",
     planned: "Planned",
     in_progress: "In Progress",
@@ -166,15 +166,7 @@ function createThemeFromColor(primaryColor, isDark = false) {
 }
 
 // src/config.ts
-var getEnvVar = (key) => {
-  if (typeof process !== "undefined" && process.env && process.env[key]) {
-    return process.env[key];
-  }
-  throw new Error(
-    `[ProdFeedback] Missing required environment variable: ${key}. Please set ${key} in your .env file or environment variables.`
-  );
-};
-var API_BASE_URL = getEnvVar("PRODFEEDBACK_API_BASE_URL");
+var API_BASE_URL = "https://www.featuredeck.in/api";
 
 // src/api/client.ts
 var apiKey = null;
@@ -183,7 +175,7 @@ function setApiKey(key) {
 }
 function getApiKey() {
   if (!apiKey) {
-    throw new Error("[ProdFeedback] API key not set. Call ProdFeedback.init() first.");
+    throw new Error("[FeaturedDeck] API key not set. Call FeaturedDeck.init() first.");
   }
   return apiKey;
 }
@@ -233,26 +225,25 @@ async function del(endpoint) {
 }
 
 // src/api/queries.ts
+async function identifyEndUser(input) {
+  const response = await post("/end-users/identify", {
+    externalUserId: input.externalUserId,
+    username: input.username,
+    email: input.email
+  });
+  if (!response.success) {
+    throw new Error(response.error || "Failed to identify user");
+  }
+  return response.data;
+}
 async function fetchFeatures(options = {}) {
-  const { filters, userId, page = 1, pageSize = 20 } = options;
+  const { endUserId, page = 1, pageSize = 20 } = options;
   const params = new URLSearchParams({
     page: page.toString(),
     pageSize: pageSize.toString()
   });
-  if ((filters == null ? void 0 : filters.status) && filters.status.length > 0) {
-    params.append("status", filters.status.join(","));
-  }
-  if ((filters == null ? void 0 : filters.type) && filters.type.length > 0) {
-    params.append("type", filters.type.join(","));
-  }
-  if (filters == null ? void 0 : filters.searchQuery) {
-    params.append("search", filters.searchQuery);
-  }
-  if (filters == null ? void 0 : filters.sortBy) {
-    params.append("sortBy", filters.sortBy);
-  }
-  if (userId) {
-    params.append("userId", userId);
+  if (endUserId) {
+    params.append("endUserId", endUserId);
   }
   const response = await get(`/features?${params.toString()}`);
   if (!response.success) {
@@ -260,44 +251,56 @@ async function fetchFeatures(options = {}) {
   }
   return response.data;
 }
-async function fetchFeature(featureId, userId) {
-  const params = userId ? `?userId=${userId}` : "";
-  const response = await get(`/features/${featureId}${params}`);
-  if (!response.success) {
-    throw new Error(response.error || "Failed to fetch feature");
-  }
-  return response.data;
-}
-async function createFeature(title, description, user, type = "feature") {
+async function createFeature(title, description, user) {
   const response = await post("/features", {
     title,
     description,
-    type,
-    user
+    endUser: user
   });
   if (!response.success) {
     throw new Error(response.error || "Failed to create feature");
   }
   return response.data;
 }
-async function deleteFeature(featureId, userId) {
-  const response = await del(`/features/${featureId}?userId=${userId}`);
+async function deleteFeature(featureId, endUserId) {
+  const response = await del(`/features/${featureId}?endUserId=${endUserId}`);
   if (!response.success) {
     throw new Error(response.error || "Failed to delete feature");
   }
 }
-async function toggleUpvote(featureId, userId) {
+async function toggleUpvote(featureId, endUserId) {
   const response = await post(
-    `/features/${featureId}/upvote`,
-    { userId }
+    `/features/${featureId}/vote`,
+    { endUserId }
   );
   if (!response.success) {
-    throw new Error(response.error || "Failed to toggle upvote");
+    throw new Error(response.error || "Failed to toggle vote");
   }
   return response.data;
 }
+async function fetchRoadmap() {
+  const response = await get("/roadmap");
+  if (!response.success) {
+    throw new Error(response.error || "Failed to fetch roadmap");
+  }
+  return response.data || [];
+}
 
 // src/state/store.ts
+var pendingVotes = /* @__PURE__ */ new Set();
+function mergePreservingPendingVotes(incoming, current) {
+  if (pendingVotes.size === 0) return incoming;
+  const currentMap = new Map(current.map((f) => [f.id, f]));
+  return incoming.map((f) => {
+    if (pendingVotes.has(f.id)) {
+      const local = currentMap.get(f.id);
+      if (local) {
+        return { ...f, upvotesCount: local.upvotesCount, hasUpvoted: local.hasUpvoted };
+      }
+    }
+    return f;
+  });
+}
 var store = create((set, get2) => ({
   apiKey: null,
   user: null,
@@ -311,10 +314,8 @@ var store = create((set, get2) => ({
   featuresTotal: 0,
   featuresPage: 1,
   featuresHasMore: false,
-  selectedFeature: null,
-  filters: {
-    sortBy: "trending"
-  },
+  roadmapFeatures: [],
+  roadmapLoading: false,
   init: async (options) => {
     const { apiKey: apiKey2, theme } = options;
     try {
@@ -326,14 +327,29 @@ var store = create((set, get2) => ({
         theme: mergedTheme,
         ready: true
       });
-      console.log("[ProdFeedback] SDK initialized");
+      console.log("[FeaturedDeck] SDK initialized");
     } catch (error) {
-      console.error("[ProdFeedback] Failed to initialize:", error);
+      console.error("[FeaturedDeck] Failed to initialize:", error);
       set({ error: error.message || "Failed to initialize SDK" });
     }
   },
-  setUser: (user) => {
-    set({ user });
+  setUser: async (input) => {
+    if (!input) {
+      set({ user: null });
+      return;
+    }
+    try {
+      const resolved = await identifyEndUser(input);
+      set({ user: resolved });
+    } catch (e) {
+      console.warn("[FeaturedDeck] Failed to identify user, storing locally:", e.message);
+      set({
+        user: {
+          id: input.externalUserId,
+          ...input
+        }
+      });
+    }
   },
   setTheme: (theme) => {
     const currentTheme = get2().theme;
@@ -352,28 +368,20 @@ var store = create((set, get2) => ({
     set({
       visible: false,
       viewState: { type: "board" },
-      selectedFeature: null,
       error: null
     });
   },
   navigateTo: (view) => {
     set({ viewState: view, error: null });
   },
-  openFeature: async (featureId) => {
-    set({
-      viewState: { type: "feature", featureId }
-    });
-    await get2().loadFeature(featureId);
-  },
   openAddFeature: () => {
     set({ viewState: { type: "add-feature" }, error: null });
   },
   goBack: () => {
     const { viewState } = get2();
-    if (viewState.type === "feature" || viewState.type === "add-feature" || viewState.type === "roadmap") {
+    if (viewState.type === "add-feature") {
       set({
         viewState: { type: "board" },
-        selectedFeature: null,
         error: null
       });
     } else {
@@ -381,17 +389,17 @@ var store = create((set, get2) => ({
     }
   },
   loadFeatures: async (refresh = false) => {
-    const { filters, user } = get2();
+    const { user } = get2();
     set({ isLoading: true, error: null });
     try {
       const result = await fetchFeatures({
-        filters,
-        userId: user == null ? void 0 : user.id,
+        endUserId: user == null ? void 0 : user.id,
         page: 1,
         pageSize: 20
       });
+      const merged = mergePreservingPendingVotes(result.data, get2().features);
       set({
-        features: result.data,
+        features: merged,
         featuresTotal: result.total,
         featuresPage: 1,
         featuresHasMore: result.hasMore,
@@ -405,13 +413,12 @@ var store = create((set, get2) => ({
     }
   },
   loadMoreFeatures: async () => {
-    const { filters, featuresPage, featuresHasMore, features, user } = get2();
+    const { featuresPage, featuresHasMore, features, user } = get2();
     if (!featuresHasMore) return;
     const nextPage = featuresPage + 1;
     try {
       const result = await fetchFeatures({
-        filters,
-        userId: user == null ? void 0 : user.id,
+        endUserId: user == null ? void 0 : user.id,
         page: nextPage,
         pageSize: 20
       });
@@ -423,28 +430,15 @@ var store = create((set, get2) => ({
     } catch (e) {
     }
   },
-  loadFeature: async (featureId) => {
-    const { user } = get2();
-    try {
-      const feature = await fetchFeature(featureId, user == null ? void 0 : user.id);
-      set({ selectedFeature: feature });
-      const features = get2().features.map(
-        (f) => f.id === featureId ? feature : f
-      );
-      set({ features });
-    } catch (e) {
-      set({ error: e.message || "Failed to load feature" });
-    }
-  },
-  createFeature: async (title, description, type = "feature") => {
+  createFeature: async (title, description) => {
     const { user } = get2();
     if (!user) {
-      set({ error: "User must be set to create feedback. Call ProdFeedback.setUser() first." });
+      set({ error: "User must be set to create feedback. Call FeaturedDeck.setUser() first." });
       return false;
     }
     set({ isLoading: true, error: null });
     try {
-      const newFeature = await createFeature(title, description, user, type);
+      const newFeature = await createFeature(title, description, user);
       const features = [newFeature, ...get2().features];
       set({
         features,
@@ -464,16 +458,14 @@ var store = create((set, get2) => ({
   deleteFeature: async (featureId) => {
     const { user, features } = get2();
     if (!user) {
-      set({ error: "User must be set to delete a feature. Call ProdFeedback.setUser() first." });
+      set({ error: "User must be set to delete a feature. Call FeaturedDeck.setUser() first." });
       return false;
     }
     try {
       await deleteFeature(featureId, user.id);
       set({
         features: features.filter((f) => f.id !== featureId),
-        featuresTotal: get2().featuresTotal - 1,
-        viewState: { type: "board" },
-        selectedFeature: null
+        featuresTotal: get2().featuresTotal - 1
       });
       return true;
     } catch (e) {
@@ -482,71 +474,77 @@ var store = create((set, get2) => ({
     }
   },
   toggleUpvote: async (featureId) => {
-    var _a, _b;
-    const { features, selectedFeature, user } = get2();
+    const { features, user } = get2();
     if (!user) {
-      set({ error: "User must be set to vote. Call ProdFeedback.setUser() first." });
+      set({ error: "User must be set to vote. Call FeaturedDeck.setUser() first." });
       return;
     }
-    const feature = features.find((f) => f.id === featureId) || selectedFeature;
+    const feature = features.find((f) => f.id === featureId);
     if (!feature) return;
     const willUpvote = !feature.hasUpvoted;
-    const updateFeature = (f) => ({
+    const optimistic = (f) => ({
       ...f,
       hasUpvoted: willUpvote,
-      upvotes: willUpvote ? f.upvotes + 1 : f.upvotes - 1
+      upvotesCount: willUpvote ? f.upvotesCount + 1 : f.upvotesCount - 1
     });
+    pendingVotes.add(featureId);
     set({
-      features: features.map((f) => f.id === featureId ? updateFeature(f) : f),
-      selectedFeature: (selectedFeature == null ? void 0 : selectedFeature.id) === featureId ? updateFeature(selectedFeature) : selectedFeature
+      features: features.map((f) => f.id === featureId ? optimistic(f) : f)
     });
     try {
       const result = await toggleUpvote(featureId, user.id);
+      pendingVotes.delete(featureId);
       const serverUpdate = (f) => ({
         ...f,
-        upvotes: result.upvotes,
+        upvotesCount: result.upvotesCount,
         hasUpvoted: result.hasUpvoted
       });
       set({
         features: get2().features.map(
           (f) => f.id === featureId ? serverUpdate(f) : f
-        ),
-        selectedFeature: ((_a = get2().selectedFeature) == null ? void 0 : _a.id) === featureId ? serverUpdate(get2().selectedFeature) : get2().selectedFeature
+        )
       });
     } catch (e) {
+      pendingVotes.delete(featureId);
       const revert = (f) => ({
         ...f,
         hasUpvoted: !willUpvote,
-        upvotes: willUpvote ? f.upvotes - 1 : f.upvotes + 1
+        upvotesCount: willUpvote ? f.upvotesCount - 1 : f.upvotesCount + 1
       });
       set({
-        features: get2().features.map((f) => f.id === featureId ? revert(f) : f),
-        selectedFeature: ((_b = get2().selectedFeature) == null ? void 0 : _b.id) === featureId ? revert(get2().selectedFeature) : get2().selectedFeature
+        features: get2().features.map((f) => f.id === featureId ? revert(f) : f)
       });
     }
   },
-  setFilters: (newFilters) => {
-    set({
-      filters: { ...get2().filters, ...newFilters }
-    });
-    get2().loadFeatures(true);
+  loadRoadmap: async () => {
+    set({ roadmapLoading: true, error: null });
+    try {
+      const features = await fetchRoadmap();
+      set({ roadmapFeatures: features, roadmapLoading: false });
+    } catch (e) {
+      set({
+        error: e.message || "Failed to load roadmap",
+        roadmapLoading: false
+      });
+    }
   }
 }));
 var useStore = store;
 var useFeatures = () => store((s) => s.features);
-var useSelectedFeature = () => store((s) => s.selectedFeature);
 var useThemeStore = () => store((s) => s.theme);
 var useIsLoading = () => store((s) => s.isLoading);
 var useError = () => store((s) => s.error);
 var useVisible = () => store((s) => s.visible);
 var useViewState = () => store((s) => s.viewState);
 var useUser = () => store((s) => s.user);
+var useRoadmapFeatures = () => store((s) => s.roadmapFeatures);
+var useRoadmapLoading = () => store((s) => s.roadmapLoading);
 
-// src/core/ProdFeedback.ts
-var ProdFeedbackSDK = class {
+// src/core/FeaturedDeck.ts
+var FeaturedDeckSDK = class {
   async init(config) {
     if (!config.apiKey) {
-      console.error("[ProdFeedback] API key is required");
+      console.error("[FeaturedDeck] API key is required");
       return;
     }
     await store.getState().init({
@@ -557,21 +555,18 @@ var ProdFeedbackSDK = class {
   isReady() {
     return store.getState().ready;
   }
-  open() {
+  openFeatureBoard() {
     if (!this.isReady()) {
-      console.warn("[ProdFeedback] SDK not initialized. Call init() first.");
+      console.warn("[FeaturedDeck] SDK not initialized. Call init() first.");
       return;
     }
     store.getState().open();
   }
-  openBoard() {
-    this.open();
-  }
   close() {
     store.getState().close();
   }
-  setUser(user) {
-    store.getState().setUser(user);
+  async setUser(user) {
+    await store.getState().setUser(user);
   }
   getUser() {
     return store.getState().user;
@@ -585,552 +580,16 @@ var ProdFeedbackSDK = class {
   enableLightMode() {
     store.getState().setTheme({ isDark: false });
   }
-  setFilters(filters) {
-    store.getState().setFilters(filters);
-  }
-  async refresh() {
-    await store.getState().loadFeatures(true);
-  }
-  async showRoadmap() {
-    if (!this.isReady()) {
-      console.warn("[ProdFeedback] SDK not initialized. Call init() first.");
-      return;
-    }
-    store.getState().open();
-    store.getState().navigateTo({ type: "roadmap" });
-  }
-  openFeature(featureId) {
-    if (!this.isReady()) {
-      console.warn("[ProdFeedback] SDK not initialized. Call init() first.");
-      return;
-    }
-    store.getState().open();
-    store.getState().openFeature(featureId);
-  }
-  openAddFeature() {
-    if (!this.isReady()) {
-      console.warn("[ProdFeedback] SDK not initialized. Call init() first.");
-      return;
-    }
-    store.getState().open();
-    store.getState().openAddFeature();
-  }
   isVisible() {
     return store.getState().visible;
   }
-  async upvote(featureId) {
-    if (!this.isReady()) {
-      console.warn("[ProdFeedback] SDK not initialized. Call init() first.");
-      return;
-    }
-    await store.getState().toggleUpvote(featureId);
-  }
-  async deleteFeature(featureId) {
-    if (!this.isReady()) {
-      console.warn("[ProdFeedback] SDK not initialized. Call init() first.");
-      return false;
-    }
-    return store.getState().deleteFeature(featureId);
-  }
 };
-var ProdFeedback = new ProdFeedbackSDK();
-function Header({ title, showBack = false, rightAction }) {
-  const theme = useTheme();
-  useViewState();
-  const styles2 = useMemo(() => StyleSheet.create({
-    container: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between"
-    },
-    leftButton: {
-      width: 40,
-      height: 40,
-      alignItems: "flex-start",
-      justifyContent: "center"
-    },
-    backIcon: {
-      width: 24,
-      height: 24,
-      alignItems: "center",
-      justifyContent: "center"
-    },
-    chevron: {
-      width: 10,
-      height: 10,
-      borderLeftWidth: 2,
-      borderBottomWidth: 2,
-      transform: [{ rotate: "45deg" }],
-      marginLeft: 4
-    },
-    title: {
-      flex: 1,
-      textAlign: "center",
-      fontWeight: "700"
-    },
-    rightButton: {
-      width: 40,
-      height: 40,
-      alignItems: "flex-end",
-      justifyContent: "center"
-    }
-  }), []);
-  const handleBack = () => {
-    store.getState().goBack();
-  };
-  const handleClose = () => {
-    store.getState().close();
-  };
-  return /* @__PURE__ */ jsxs(
-    View,
-    {
-      style: [
-        styles2.container,
-        {
-          backgroundColor: theme.colors.surface,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-          paddingHorizontal: theme.spacing.md,
-          paddingTop: Platform.OS === "ios" ? 50 : theme.spacing.md,
-          paddingBottom: theme.spacing.md
-        }
-      ],
-      children: [
-        /* @__PURE__ */ jsx(
-          TouchableOpacity,
-          {
-            style: styles2.leftButton,
-            onPress: showBack ? handleBack : handleClose,
-            hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
-            children: showBack ? /* @__PURE__ */ jsx(View, { style: styles2.backIcon, children: /* @__PURE__ */ jsx(
-              View,
-              {
-                style: [
-                  styles2.chevron,
-                  {
-                    borderColor: theme.colors.text
-                  }
-                ]
-              }
-            ) }) : /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.text, fontSize: 24, fontWeight: "300" }, children: "\u2715" })
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          Text,
-          {
-            style: [
-              styles2.title,
-              {
-                color: theme.colors.text,
-                fontSize: theme.typography.sizeLg,
-                fontFamily: theme.typography.fontFamilyBold
-              }
-            ],
-            numberOfLines: 1,
-            children: title
-          }
-        ),
-        /* @__PURE__ */ jsx(View, { style: styles2.rightButton, children: rightAction })
-      ]
-    }
-  );
-}
-
-// src/hooks/index.ts
-function useFeatures2() {
-  return store((s) => s.features);
-}
-function useFeature(featureId) {
-  return store((s) => s.features.find((f) => f.id === featureId));
-}
-function useSelectedFeature2() {
-  return store((s) => s.selectedFeature);
-}
-function useComments() {
-  return [];
-}
-function useCategories() {
-  return [];
-}
-function useFilters() {
-  return store((s) => s.filters);
-}
-function useIsLoading2() {
-  return store((s) => s.isLoading);
-}
-function useError2() {
-  return store((s) => s.error);
-}
-function useVisible2() {
-  return store((s) => s.visible);
-}
-function useUser2() {
-  return useUser();
-}
-function useIsFeatureAuthor(featureId) {
-  const user = store((s) => s.user);
-  const feature = store((s) => s.features.find((f) => f.id === featureId));
-  if (!user || !feature || !feature.author) return false;
-  return user.id === feature.author.id;
-}
-function useProdFeedbackActions() {
-  return {
-    open: store.getState().open,
-    close: store.getState().close,
-    setFilters: store.getState().setFilters,
-    refresh: () => store.getState().loadFeatures(true),
-    upvote: store.getState().toggleUpvote,
-    deleteFeature: store.getState().deleteFeature
-  };
-}
-function useUpvote(featureId) {
-  var _a, _b;
-  const feature = store((s) => s.features.find((f) => f.id === featureId));
-  return {
-    upvotes: (_a = feature == null ? void 0 : feature.upvotes) != null ? _a : 0,
-    hasUpvoted: (_b = feature == null ? void 0 : feature.hasUpvoted) != null ? _b : false,
-    toggle: () => store.getState().toggleUpvote(featureId)
-  };
-}
-function useSubscription(featureId) {
-  var _a;
-  const feature = store((s) => s.features.find((f) => f.id === featureId));
-  return {
-    isSubscribed: (_a = feature == null ? void 0 : feature.isSubscribed) != null ? _a : false,
-    toggle: () => {
-    }
-  };
-}
-function useDeleteFeature(featureId) {
-  const user = store((s) => s.user);
-  const feature = store((s) => s.features.find((f) => f.id === featureId));
-  const canDelete = user && feature && feature.author && user.id === feature.author.id;
-  return {
-    canDelete: !!canDelete,
-    deleteFeature: async () => {
-      if (!canDelete) return false;
-      return store.getState().deleteFeature(featureId);
-    }
-  };
-}
-var SORT_OPTIONS = [
-  { value: "trending", label: "Trending" },
-  { value: "newest", label: "Newest" },
-  { value: "most_upvotes", label: "Most Voted" }
-];
-var STATUS_OPTIONS = [
-  "under_review",
-  "planned",
-  "in_progress",
-  "completed"
-];
-function FilterBar() {
-  const theme = useTheme();
-  const categories = useCategories();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-  const currentFilters = useStore((s) => s.filters);
-  const styles2 = useMemo(() => StyleSheet.create({
-    container: {},
-    searchContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      height: 44
-    },
-    searchInput: {
-      flex: 1,
-      height: "100%",
-      paddingHorizontal: 12
-    },
-    chip: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 8,
-      paddingHorizontal: 16
-    },
-    filtersExpanded: {},
-    filterRow: {
-      flexDirection: "row",
-      flexWrap: "wrap"
-    },
-    filterChip: {
-      paddingVertical: 6,
-      paddingHorizontal: 12
-    }
-  }), []);
-  const handleSortChange = (sortBy) => {
-    store.getState().setFilters({ sortBy });
-  };
-  const handleStatusToggle = (status) => {
-    const currentStatuses = currentFilters.status || [];
-    const newStatuses = currentStatuses.includes(status) ? currentStatuses.filter((s) => s !== status) : [...currentStatuses, status];
-    store.getState().setFilters({
-      status: newStatuses.length > 0 ? newStatuses : void 0
-    });
-  };
-  const handleCategoryChange = (categoryId) => {
-    store.getState().setFilters({ category: categoryId });
-  };
-  const handleSearch = (text) => {
-    setSearchQuery(text);
-    clearTimeout(handleSearch.timeout);
-    handleSearch.timeout = setTimeout(() => {
-      store.getState().setFilters({ searchQuery: text || void 0 });
-    }, 300);
-  };
-  return /* @__PURE__ */ jsxs(View, { style: styles2.container, children: [
-    /* @__PURE__ */ jsxs(
-      View,
-      {
-        style: [
-          styles2.searchContainer,
-          {
-            backgroundColor: theme.colors.backgroundSecondary,
-            borderRadius: theme.borderRadius.md,
-            marginHorizontal: theme.spacing.md,
-            marginBottom: theme.spacing.sm
-          }
-        ],
-        children: [
-          /* @__PURE__ */ jsx(Text, { style: { marginLeft: 12, fontSize: 16 }, children: "\u{1F50D}" }),
-          /* @__PURE__ */ jsx(
-            TextInput,
-            {
-              style: [
-                styles2.searchInput,
-                {
-                  color: theme.colors.text,
-                  fontSize: theme.typography.sizeMd
-                }
-              ],
-              placeholder: "Search features...",
-              placeholderTextColor: theme.colors.textMuted,
-              value: searchQuery,
-              onChangeText: handleSearch
-            }
-          ),
-          searchQuery.length > 0 && /* @__PURE__ */ jsx(
-            TouchableOpacity,
-            {
-              onPress: () => handleSearch(""),
-              style: { marginRight: 12 },
-              children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textMuted, fontSize: 16 }, children: "\u2715" })
-            }
-          )
-        ]
-      }
-    ),
-    /* @__PURE__ */ jsxs(
-      ScrollView,
-      {
-        horizontal: true,
-        showsHorizontalScrollIndicator: false,
-        contentContainerStyle: {
-          paddingHorizontal: theme.spacing.md,
-          paddingBottom: theme.spacing.sm
-        },
-        children: [
-          SORT_OPTIONS.map((option) => {
-            const isActive = currentFilters.sortBy === option.value;
-            return /* @__PURE__ */ jsx(
-              TouchableOpacity,
-              {
-                style: [
-                  styles2.chip,
-                  {
-                    backgroundColor: isActive ? theme.colors.primary : theme.colors.backgroundSecondary,
-                    borderRadius: theme.borderRadius.full,
-                    marginRight: theme.spacing.sm
-                  }
-                ],
-                onPress: () => handleSortChange(option.value),
-                children: /* @__PURE__ */ jsx(
-                  Text,
-                  {
-                    style: {
-                      color: isActive ? theme.colors.textInverse : theme.colors.text,
-                      fontSize: theme.typography.sizeSm,
-                      fontWeight: isActive ? "600" : "400"
-                    },
-                    children: option.label
-                  }
-                )
-              },
-              option.value
-            );
-          }),
-          /* @__PURE__ */ jsxs(
-            TouchableOpacity,
-            {
-              style: [
-                styles2.chip,
-                {
-                  backgroundColor: showFilters ? theme.colors.primary : theme.colors.backgroundSecondary,
-                  borderRadius: theme.borderRadius.full
-                }
-              ],
-              onPress: () => setShowFilters(!showFilters),
-              children: [
-                /* @__PURE__ */ jsx(Text, { style: { fontSize: 14 }, children: "\u2699\uFE0F" }),
-                /* @__PURE__ */ jsx(
-                  Text,
-                  {
-                    style: {
-                      color: showFilters ? theme.colors.textInverse : theme.colors.text,
-                      fontSize: theme.typography.sizeSm,
-                      marginLeft: 4
-                    },
-                    children: "Filters"
-                  }
-                )
-              ]
-            }
-          )
-        ]
-      }
-    ),
-    showFilters && /* @__PURE__ */ jsxs(
-      View,
-      {
-        style: [
-          styles2.filtersExpanded,
-          {
-            backgroundColor: theme.colors.surface,
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
-            padding: theme.spacing.md
-          }
-        ],
-        children: [
-          /* @__PURE__ */ jsx(
-            Text,
-            {
-              style: {
-                color: theme.colors.textSecondary,
-                fontSize: theme.typography.sizeSm,
-                fontWeight: "600",
-                marginBottom: theme.spacing.sm
-              },
-              children: "Status"
-            }
-          ),
-          /* @__PURE__ */ jsx(View, { style: styles2.filterRow, children: STATUS_OPTIONS.map((status) => {
-            var _a;
-            const isActive = (_a = currentFilters.status) == null ? void 0 : _a.includes(status);
-            return /* @__PURE__ */ jsx(
-              TouchableOpacity,
-              {
-                style: [
-                  styles2.filterChip,
-                  {
-                    backgroundColor: isActive ? theme.colors.primary + "20" : theme.colors.backgroundSecondary,
-                    borderWidth: isActive ? 1 : 0,
-                    borderColor: theme.colors.primary,
-                    borderRadius: theme.borderRadius.sm,
-                    marginRight: theme.spacing.xs,
-                    marginBottom: theme.spacing.xs
-                  }
-                ],
-                onPress: () => handleStatusToggle(status),
-                children: /* @__PURE__ */ jsx(
-                  Text,
-                  {
-                    style: {
-                      color: isActive ? theme.colors.primary : theme.colors.text,
-                      fontSize: theme.typography.sizeSm
-                    },
-                    children: getStatusLabel(status)
-                  }
-                )
-              },
-              status
-            );
-          }) }),
-          categories.length > 0 && /* @__PURE__ */ jsxs(Fragment, { children: [
-            /* @__PURE__ */ jsx(
-              Text,
-              {
-                style: {
-                  color: theme.colors.textSecondary,
-                  fontSize: theme.typography.sizeSm,
-                  fontWeight: "600",
-                  marginTop: theme.spacing.sm,
-                  marginBottom: theme.spacing.sm
-                },
-                children: "Category"
-              }
-            ),
-            /* @__PURE__ */ jsxs(View, { style: styles2.filterRow, children: [
-              /* @__PURE__ */ jsx(
-                TouchableOpacity,
-                {
-                  style: [
-                    styles2.filterChip,
-                    {
-                      backgroundColor: !currentFilters.category ? theme.colors.primary + "20" : theme.colors.backgroundSecondary,
-                      borderWidth: !currentFilters.category ? 1 : 0,
-                      borderColor: theme.colors.primary,
-                      borderRadius: theme.borderRadius.sm,
-                      marginRight: theme.spacing.xs,
-                      marginBottom: theme.spacing.xs
-                    }
-                  ],
-                  onPress: () => handleCategoryChange(void 0),
-                  children: /* @__PURE__ */ jsx(
-                    Text,
-                    {
-                      style: {
-                        color: !currentFilters.category ? theme.colors.primary : theme.colors.text,
-                        fontSize: theme.typography.sizeSm
-                      },
-                      children: "All"
-                    }
-                  )
-                }
-              ),
-              categories.map((cat) => {
-                const isActive = currentFilters.category === cat.id;
-                return /* @__PURE__ */ jsx(
-                  TouchableOpacity,
-                  {
-                    style: [
-                      styles2.filterChip,
-                      {
-                        backgroundColor: isActive ? cat.color + "20" : theme.colors.backgroundSecondary,
-                        borderWidth: isActive ? 1 : 0,
-                        borderColor: cat.color,
-                        borderRadius: theme.borderRadius.sm,
-                        marginRight: theme.spacing.xs,
-                        marginBottom: theme.spacing.xs
-                      }
-                    ],
-                    onPress: () => handleCategoryChange(cat.id),
-                    children: /* @__PURE__ */ jsx(
-                      Text,
-                      {
-                        style: {
-                          color: isActive ? cat.color : theme.colors.text,
-                          fontSize: theme.typography.sizeSm
-                        },
-                        children: cat.name
-                      }
-                    )
-                  },
-                  cat.id
-                );
-              })
-            ] })
-          ] })
-        ]
-      }
-    )
-  ] });
-}
+var FeaturedDeck = new FeaturedDeckSDK();
 function StatusBadge({ status, size = "medium" }) {
   const theme = useTheme();
   const color = getStatusColor(status, theme.colors);
   const label = getStatusLabel(status);
-  const styles2 = useMemo(() => StyleSheet.create({
+  const styles3 = useMemo(() => StyleSheet.create({
     badge: {
       flexDirection: "row",
       alignItems: "center",
@@ -1148,7 +607,7 @@ function StatusBadge({ status, size = "medium" }) {
     View,
     {
       style: [
-        styles2.badge,
+        styles3.badge,
         {
           backgroundColor: color + "18",
           paddingVertical: isSmall ? 3 : 5,
@@ -1161,7 +620,7 @@ function StatusBadge({ status, size = "medium" }) {
           View,
           {
             style: [
-              styles2.dot,
+              styles3.dot,
               {
                 backgroundColor: color,
                 width: isSmall ? 6 : 8,
@@ -1175,7 +634,7 @@ function StatusBadge({ status, size = "medium" }) {
           Text,
           {
             style: [
-              styles2.label,
+              styles3.label,
               {
                 color,
                 fontSize: isSmall ? theme.typography.sizeXs : theme.typography.sizeSm,
@@ -1206,7 +665,7 @@ function UpvoteButton({
 }) {
   const theme = useTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const styles2 = useMemo(() => StyleSheet.create({
+  const styles3 = useMemo(() => StyleSheet.create({
     container: {
       alignItems: "center",
       justifyContent: "center",
@@ -1256,7 +715,7 @@ function UpvoteButton({
         Animated.View,
         {
           style: [
-            styles2.container,
+            styles3.container,
             {
               width: config.width,
               height: config.height,
@@ -1272,7 +731,7 @@ function UpvoteButton({
               View,
               {
                 style: [
-                  styles2.arrow,
+                  styles3.arrow,
                   {
                     borderLeftWidth: config.iconSize * 0.6,
                     borderRightWidth: config.iconSize * 0.6,
@@ -1286,7 +745,7 @@ function UpvoteButton({
               Text,
               {
                 style: [
-                  styles2.count,
+                  styles3.count,
                   {
                     color: activeColor,
                     fontSize: config.textSize,
@@ -1303,152 +762,93 @@ function UpvoteButton({
     }
   );
 }
-function FeatureCard({ feature, onPress }) {
+function FeatureCard({ feature }) {
   const theme = useTheme();
-  const styles2 = useMemo(() => StyleSheet.create({
-    container: {
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.05,
-      shadowRadius: 8,
-      elevation: 2
-    },
-    row: {
-      flexDirection: "row"
-    },
-    content: {
-      flex: 1
-    },
-    title: {
-      fontWeight: "600",
-      lineHeight: 22
-    },
-    description: {
-      lineHeight: 20
-    },
-    footer: {
-      flexDirection: "row",
-      alignItems: "center"
-    },
-    commentCount: {
-      flexDirection: "row",
-      alignItems: "center"
-    },
-    commentText: {
-      fontWeight: "500"
-    },
-    category: {}
-  }), []);
+  const user = useUser();
+  const isAuthor = !!user && !!feature.createdByEndUserId && user.id === feature.createdByEndUserId;
   const handleUpvote = () => {
     store.getState().toggleUpvote(feature.id);
   };
-  const handlePress = () => {
-    if (onPress) {
-      onPress();
-    } else {
-      store.getState().openFeature(feature.id);
-    }
+  const handleDelete = () => {
+    Alert.alert(
+      "Delete Feature",
+      "Are you sure you want to delete this feature request?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => store.getState().deleteFeature(feature.id)
+        }
+      ]
+    );
   };
   return /* @__PURE__ */ jsx(
-    TouchableOpacity,
+    View,
     {
       style: [
-        styles2.container,
+        styles.container,
         {
           backgroundColor: theme.colors.surface,
-          borderRadius: theme.borderRadius.lg,
-          padding: theme.spacing.md,
-          marginBottom: theme.spacing.sm,
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 10,
           borderWidth: 1,
           borderColor: theme.colors.border
         }
       ],
-      onPress: handlePress,
-      activeOpacity: 0.7,
-      children: /* @__PURE__ */ jsxs(View, { style: styles2.row, children: [
+      children: /* @__PURE__ */ jsxs(View, { style: styles.row, children: [
         /* @__PURE__ */ jsx(
           UpvoteButton,
           {
-            count: feature.upvotes,
+            count: feature.upvotesCount,
             hasUpvoted: feature.hasUpvoted,
             onPress: handleUpvote,
             size: "small"
           }
         ),
-        /* @__PURE__ */ jsxs(View, { style: [styles2.content, { marginLeft: theme.spacing.md }], children: [
+        /* @__PURE__ */ jsxs(View, { style: { flex: 1, marginLeft: 14 }, children: [
           /* @__PURE__ */ jsx(
             Text,
             {
-              style: [
-                styles2.title,
-                {
-                  color: theme.colors.text,
-                  fontSize: theme.typography.sizeMd,
-                  fontFamily: theme.typography.fontFamilyBold
-                }
-              ],
+              style: {
+                color: theme.colors.text,
+                fontSize: 15,
+                fontWeight: "600",
+                lineHeight: 22
+              },
               numberOfLines: 2,
               children: feature.title
             }
           ),
-          /* @__PURE__ */ jsx(
+          feature.description && /* @__PURE__ */ jsx(
             Text,
             {
-              style: [
-                styles2.description,
-                {
-                  color: theme.colors.textSecondary,
-                  fontSize: theme.typography.sizeSm,
-                  marginTop: theme.spacing.xs
-                }
-              ],
+              style: {
+                color: theme.colors.textSecondary,
+                fontSize: 13,
+                marginTop: 4,
+                lineHeight: 19
+              },
               numberOfLines: 2,
               children: feature.description
             }
           ),
-          /* @__PURE__ */ jsxs(View, { style: [styles2.footer, { marginTop: theme.spacing.sm }], children: [
+          /* @__PURE__ */ jsxs(View, { style: styles.footer, children: [
             /* @__PURE__ */ jsx(StatusBadge, { status: feature.status, size: "small" }),
-            /* @__PURE__ */ jsxs(View, { style: [styles2.commentCount, { marginLeft: theme.spacing.md }], children: [
-              /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textMuted, fontSize: 12 }, children: "\u{1F4AC}" }),
-              /* @__PURE__ */ jsx(
-                Text,
-                {
-                  style: [
-                    styles2.commentText,
-                    {
-                      color: theme.colors.textMuted,
-                      fontSize: theme.typography.sizeSm,
-                      marginLeft: 4
-                    }
-                  ],
-                  children: feature.commentCount
-                }
-              )
-            ] }),
-            feature.category && /* @__PURE__ */ jsx(
-              View,
+            isAuthor && /* @__PURE__ */ jsx(
+              TouchableOpacity,
               {
+                onPress: handleDelete,
+                hitSlop: { top: 8, bottom: 8, left: 8, right: 8 },
                 style: [
-                  styles2.category,
+                  styles.deleteButton,
                   {
-                    backgroundColor: feature.category.color + "20",
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: theme.borderRadius.sm,
-                    marginLeft: "auto"
+                    backgroundColor: theme.colors.error + "12",
+                    borderRadius: 6
                   }
                 ],
-                children: /* @__PURE__ */ jsx(
-                  Text,
-                  {
-                    style: {
-                      color: feature.category.color,
-                      fontSize: theme.typography.sizeXs,
-                      fontWeight: "500"
-                    },
-                    children: feature.category.name
-                  }
-                )
+                children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.error, fontSize: 12, fontWeight: "500" }, children: "Delete" })
               }
             )
           ] })
@@ -1457,39 +857,62 @@ function FeatureCard({ feature, onPress }) {
     }
   );
 }
+var styles = StyleSheet.create({
+  container: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1
+  },
+  row: {
+    flexDirection: "row"
+  },
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10
+  },
+  deleteButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4
+  }
+});
+var ROADMAP_STATUS_ORDER = ["in_progress", "planned", "completed", "cancelled"];
+var ROADMAP_STATUS_LABELS = {
+  planned: "\u{1F4CB} Planned",
+  in_progress: "\u{1F6A7} In Progress",
+  completed: "\u2705 Completed",
+  cancelled: "\u274C Cancelled"
+};
 function FeatureBoard() {
   const theme = useTheme();
   const features = useFeatures();
   const isLoading = useIsLoading();
   const error = useError();
   const hasMore = useStore((s) => s.featuresHasMore);
-  const styles2 = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1
-    },
-    addButton: {
-      width: 28,
-      height: 28,
-      alignItems: "center",
-      justifyContent: "center"
-    },
-    emptyContainer: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 60
-    },
-    retryButton: {
-      paddingVertical: 12,
-      paddingHorizontal: 24
-    },
-    addFirstButton: {
-      paddingVertical: 14,
-      paddingHorizontal: 28
+  const roadmapFeatures = useRoadmapFeatures();
+  const roadmapLoading = useRoadmapLoading();
+  const [activeTab, setActiveTab] = useState("features");
+  useEffect(() => {
+    if (activeTab === "roadmap" && roadmapFeatures.length === 0) {
+      store.getState().loadRoadmap();
     }
-  }), []);
+  }, [activeTab]);
+  const roadmapSections = useMemo(() => {
+    return ROADMAP_STATUS_ORDER.map((status) => ({
+      title: ROADMAP_STATUS_LABELS[status],
+      status,
+      data: roadmapFeatures.filter((f) => f.status === status)
+    })).filter((section) => section.data.length > 0);
+  }, [roadmapFeatures]);
   const handleRefresh = () => {
-    store.getState().loadFeatures(true);
+    if (activeTab === "features") {
+      store.getState().loadFeatures(true);
+    } else {
+      store.getState().loadRoadmap();
+    }
   };
   const handleLoadMore = () => {
     if (hasMore && !isLoading) {
@@ -1499,67 +922,22 @@ function FeatureBoard() {
   const handleAddFeature = () => {
     store.getState().openAddFeature();
   };
-  const renderAddButton = () => /* @__PURE__ */ jsx(
-    TouchableOpacity,
-    {
-      onPress: handleAddFeature,
-      hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
-      children: /* @__PURE__ */ jsx(
-        View,
-        {
-          style: [
-            styles2.addButton,
-            {
-              backgroundColor: theme.colors.primary,
-              borderRadius: theme.borderRadius.full
-            }
-          ],
-          children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textInverse, fontSize: 20, fontWeight: "300" }, children: "+" })
-        }
-      )
-    }
-  );
-  const renderEmpty = () => {
+  const handleClose = () => {
+    store.getState().close();
+  };
+  const renderFeaturesEmpty = () => {
     if (isLoading) {
       return /* @__PURE__ */ jsx(View, { style: styles2.emptyContainer, children: /* @__PURE__ */ jsx(ActivityIndicator, { size: "large", color: theme.colors.primary }) });
     }
     if (error) {
       return /* @__PURE__ */ jsxs(View, { style: styles2.emptyContainer, children: [
         /* @__PURE__ */ jsx(Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F615}" }),
-        /* @__PURE__ */ jsx(
-          Text,
-          {
-            style: {
-              color: theme.colors.text,
-              fontSize: theme.typography.sizeLg,
-              fontWeight: "600",
-              marginBottom: 8
-            },
-            children: "Something went wrong"
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          Text,
-          {
-            style: {
-              color: theme.colors.textSecondary,
-              fontSize: theme.typography.sizeMd,
-              textAlign: "center",
-              marginBottom: 20
-            },
-            children: error
-          }
-        ),
+        /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "Something went wrong" }),
+        /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20 }, children: error }),
         /* @__PURE__ */ jsx(
           TouchableOpacity,
           {
-            style: [
-              styles2.retryButton,
-              {
-                backgroundColor: theme.colors.primary,
-                borderRadius: theme.borderRadius.md
-              }
-            ],
+            style: { backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 },
             onPress: handleRefresh,
             children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textInverse, fontWeight: "600" }, children: "Try Again" })
           }
@@ -1568,67 +946,106 @@ function FeatureBoard() {
     }
     return /* @__PURE__ */ jsxs(View, { style: styles2.emptyContainer, children: [
       /* @__PURE__ */ jsx(Text, { style: { fontSize: 64, marginBottom: 16 }, children: "\u{1F4A1}" }),
-      /* @__PURE__ */ jsx(
-        Text,
-        {
-          style: {
-            color: theme.colors.text,
-            fontSize: theme.typography.sizeLg,
-            fontWeight: "600",
-            marginBottom: 8
-          },
-          children: "No features yet"
-        }
-      ),
-      /* @__PURE__ */ jsx(
-        Text,
-        {
-          style: {
-            color: theme.colors.textSecondary,
-            fontSize: theme.typography.sizeMd,
-            textAlign: "center",
-            marginBottom: 20,
-            paddingHorizontal: 40
-          },
-          children: "Be the first to suggest a feature and help shape the product!"
-        }
-      ),
-      /* @__PURE__ */ jsx(
-        TouchableOpacity,
-        {
-          style: [
-            styles2.addFirstButton,
-            {
-              backgroundColor: theme.colors.primary,
-              borderRadius: theme.borderRadius.md
-            }
-          ],
-          onPress: handleAddFeature,
-          children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textInverse, fontWeight: "600" }, children: "Submit Feature" })
-        }
-      )
+      /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No features yet" }),
+      /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20, paddingHorizontal: 40 }, children: "Be the first to suggest a feature!" })
     ] });
   };
-  const renderFooter = () => {
+  const renderFeaturesFooter = () => {
     if (!hasMore) return null;
     return /* @__PURE__ */ jsx(View, { style: { paddingVertical: 20 }, children: /* @__PURE__ */ jsx(ActivityIndicator, { size: "small", color: theme.colors.primary }) });
   };
+  const renderRoadmapEmpty = () => {
+    if (roadmapLoading) {
+      return /* @__PURE__ */ jsx(View, { style: styles2.emptyContainer, children: /* @__PURE__ */ jsx(ActivityIndicator, { size: "large", color: theme.colors.primary }) });
+    }
+    return /* @__PURE__ */ jsxs(View, { style: styles2.emptyContainer, children: [
+      /* @__PURE__ */ jsx(Text, { style: { fontSize: 48, marginBottom: 12 }, children: "\u{1F5FA}\uFE0F" }),
+      /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No roadmap items yet" }),
+      /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", paddingHorizontal: 40 }, children: "Check back later for upcoming features and plans." })
+    ] });
+  };
   return /* @__PURE__ */ jsxs(View, { style: [styles2.container, { backgroundColor: theme.colors.background }], children: [
-    /* @__PURE__ */ jsx(Header, { title: "Feature Requests", rightAction: renderAddButton() }),
-    /* @__PURE__ */ jsx(FilterBar, {}),
-    /* @__PURE__ */ jsx(
+    /* @__PURE__ */ jsxs(
+      View,
+      {
+        style: [
+          styles2.header,
+          {
+            backgroundColor: theme.colors.surface,
+            paddingTop: Platform.OS === "ios" ? 54 : 16,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.colors.border
+          }
+        ],
+        children: [
+          /* @__PURE__ */ jsxs(View, { style: styles2.headerRow, children: [
+            /* @__PURE__ */ jsx(Text, { style: [styles2.headerTitle, { color: theme.colors.text }], children: "Features" }),
+            /* @__PURE__ */ jsx(TouchableOpacity, { onPress: handleClose, hitSlop: { top: 10, bottom: 10, left: 10, right: 10 }, children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textSecondary, fontSize: 22, fontWeight: "300" }, children: "\u2715" }) })
+          ] }),
+          /* @__PURE__ */ jsxs(View, { style: styles2.tabRow, children: [
+            /* @__PURE__ */ jsx(
+              TouchableOpacity,
+              {
+                style: [
+                  styles2.tab,
+                  activeTab === "features" && { borderBottomWidth: 2, borderBottomColor: theme.colors.primary }
+                ],
+                onPress: () => setActiveTab("features"),
+                children: /* @__PURE__ */ jsx(
+                  Text,
+                  {
+                    style: [
+                      styles2.tabText,
+                      {
+                        color: activeTab === "features" ? theme.colors.primary : theme.colors.textMuted,
+                        fontWeight: activeTab === "features" ? "600" : "400"
+                      }
+                    ],
+                    children: "Features"
+                  }
+                )
+              }
+            ),
+            /* @__PURE__ */ jsx(
+              TouchableOpacity,
+              {
+                style: [
+                  styles2.tab,
+                  activeTab === "roadmap" && { borderBottomWidth: 2, borderBottomColor: theme.colors.primary }
+                ],
+                onPress: () => setActiveTab("roadmap"),
+                children: /* @__PURE__ */ jsx(
+                  Text,
+                  {
+                    style: [
+                      styles2.tabText,
+                      {
+                        color: activeTab === "roadmap" ? theme.colors.primary : theme.colors.textMuted,
+                        fontWeight: activeTab === "roadmap" ? "600" : "400"
+                      }
+                    ],
+                    children: "Roadmap"
+                  }
+                )
+              }
+            )
+          ] })
+        ]
+      }
+    ),
+    activeTab === "features" && /* @__PURE__ */ jsxs(View, { style: [styles2.banner, { backgroundColor: theme.colors.primary + "08", borderBottomWidth: 1, borderBottomColor: theme.colors.border }], children: [
+      /* @__PURE__ */ jsx(Text, { style: { fontSize: 15, marginRight: 10 }, children: "\u{1F4A1}" }),
+      /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textSecondary, fontSize: 13, flex: 1, lineHeight: 19 }, children: "Suggest and upvote features you'd love to see. Your votes help us decide what to build next." })
+    ] }),
+    activeTab === "features" ? /* @__PURE__ */ jsx(
       FlatList,
       {
         data: features,
         keyExtractor: (item) => item.id,
         renderItem: ({ item }) => /* @__PURE__ */ jsx(FeatureCard, { feature: item }),
-        contentContainerStyle: {
-          padding: theme.spacing.md,
-          paddingTop: theme.spacing.sm,
-          flexGrow: 1
-        },
-        ListEmptyComponent: renderEmpty,
-        ListFooterComponent: renderFooter,
+        contentContainerStyle: { padding: 16, paddingTop: 12, flexGrow: 1 },
+        ListEmptyComponent: renderFeaturesEmpty,
+        ListFooterComponent: renderFeaturesFooter,
         onEndReached: handleLoadMore,
         onEndReachedThreshold: 0.3,
         refreshControl: /* @__PURE__ */ jsx(
@@ -1642,728 +1059,267 @@ function FeatureBoard() {
         ),
         showsVerticalScrollIndicator: false
       }
+    ) : /* @__PURE__ */ jsx(
+      SectionList,
+      {
+        sections: roadmapSections,
+        keyExtractor: (item) => item.id,
+        renderSectionHeader: ({ section }) => /* @__PURE__ */ jsx(
+          Text,
+          {
+            style: {
+              color: theme.colors.text,
+              fontSize: 15,
+              fontWeight: "700",
+              paddingHorizontal: 16,
+              paddingTop: 20,
+              paddingBottom: 8,
+              backgroundColor: theme.colors.background
+            },
+            children: section.title
+          }
+        ),
+        renderItem: ({ item }) => /* @__PURE__ */ jsxs(
+          View,
+          {
+            style: [
+              styles2.roadmapCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderRadius: 12,
+                padding: 16,
+                marginHorizontal: 16,
+                marginBottom: 10,
+                borderWidth: 1,
+                borderColor: theme.colors.border
+              }
+            ],
+            children: [
+              /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.text, fontSize: 15, fontWeight: "600", lineHeight: 22 }, children: item.title }),
+              item.description && /* @__PURE__ */ jsx(
+                Text,
+                {
+                  style: { color: theme.colors.textSecondary, fontSize: 13, marginTop: 5, lineHeight: 19 },
+                  numberOfLines: 3,
+                  children: item.description
+                }
+              )
+            ]
+          }
+        ),
+        ListEmptyComponent: renderRoadmapEmpty,
+        contentContainerStyle: { flexGrow: 1, paddingBottom: 24 },
+        showsVerticalScrollIndicator: false,
+        refreshControl: /* @__PURE__ */ jsx(
+          RefreshControl,
+          {
+            refreshing: roadmapLoading && roadmapFeatures.length > 0,
+            onRefresh: handleRefresh,
+            tintColor: theme.colors.primary,
+            colors: [theme.colors.primary]
+          }
+        )
+      }
+    ),
+    /* @__PURE__ */ jsxs(
+      View,
+      {
+        style: [
+          styles2.bottomBar,
+          {
+            backgroundColor: theme.colors.surface,
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            paddingBottom: Platform.OS === "ios" ? 28 : 12
+          }
+        ],
+        children: [
+          activeTab === "features" && /* @__PURE__ */ jsxs(
+            TouchableOpacity,
+            {
+              style: [styles2.addButton, { backgroundColor: theme.colors.text }],
+              onPress: handleAddFeature,
+              children: [
+                /* @__PURE__ */ jsx(Text, { style: { marginRight: 6, fontSize: 14 }, children: "\u270F\uFE0F" }),
+                /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textInverse, fontSize: 15, fontWeight: "600" }, children: "Add Feature" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textMuted, fontSize: 11, textAlign: "center", marginTop: activeTab === "features" ? 12 : 0, letterSpacing: 0.3 }, children: "Powered by FeaturedDeck" })
+        ]
+      }
     )
   ] });
 }
-function formatDate(dateString) {
-  const date = new Date(dateString);
-  const now = /* @__PURE__ */ new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 6e4);
-  const diffHours = Math.floor(diffMs / 36e5);
-  const diffDays = Math.floor(diffMs / 864e5);
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
-function getInitials(name) {
-  if (!name) return "?";
-  const parts = name.split(" ");
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+var styles2 = StyleSheet.create({
+  container: {
+    flex: 1
+  },
+  header: {
+    paddingHorizontal: 16
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: 20
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "700"
+  },
+  tabRow: {
+    flexDirection: "row"
+  },
+  tab: {
+    paddingBottom: 10,
+    marginRight: 24
+  },
+  tabText: {
+    fontSize: 15
+  },
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60
+  },
+  roadmapCard: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1
+  },
+  bottomBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12
+  },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 48,
+    borderRadius: 10
   }
-  return name.slice(0, 2).toUpperCase();
-}
-function CommentItem({ comment }) {
+});
+function Header({ title, showBack = false, rightAction }) {
   const theme = useTheme();
-  const isOfficial = comment.isOfficial;
-  const styles2 = useMemo(() => StyleSheet.create({
+  useViewState();
+  const styles3 = useMemo(() => StyleSheet.create({
     container: {
-      paddingVertical: 4
-    },
-    header: {
       flexDirection: "row",
-      alignItems: "center"
+      alignItems: "center",
+      justifyContent: "space-between"
     },
-    avatar: {
-      width: 32,
-      height: 32,
+    leftButton: {
+      width: 40,
+      height: 40,
+      alignItems: "flex-start",
+      justifyContent: "center"
+    },
+    backIcon: {
+      width: 24,
+      height: 24,
       alignItems: "center",
       justifyContent: "center"
     },
-    authorInfo: {
-      marginLeft: 10
+    chevron: {
+      width: 10,
+      height: 10,
+      borderLeftWidth: 2,
+      borderBottomWidth: 2,
+      transform: [{ rotate: "45deg" }],
+      marginLeft: 4
     },
-    nameRow: {
-      flexDirection: "row",
-      alignItems: "center"
+    title: {
+      flex: 1,
+      textAlign: "center",
+      fontWeight: "700"
     },
-    officialBadge: {
-      paddingHorizontal: 6,
-      paddingVertical: 2
-    },
-    content: {}
+    rightButton: {
+      width: 40,
+      height: 40,
+      alignItems: "flex-end",
+      justifyContent: "center"
+    }
   }), []);
+  const handleBack = () => {
+    store.getState().goBack();
+  };
+  const handleClose = () => {
+    store.getState().close();
+  };
   return /* @__PURE__ */ jsxs(
     View,
     {
       style: [
-        styles2.container,
+        styles3.container,
         {
-          backgroundColor: isOfficial ? theme.colors.primary + "08" : "transparent",
-          borderLeftWidth: isOfficial ? 3 : 0,
-          borderLeftColor: theme.colors.primary,
-          paddingLeft: isOfficial ? theme.spacing.md : 0,
-          marginBottom: theme.spacing.md
+          backgroundColor: theme.colors.surface,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.colors.border,
+          paddingHorizontal: theme.spacing.md,
+          paddingTop: Platform.OS === "ios" ? 50 : theme.spacing.md,
+          paddingBottom: theme.spacing.md
         }
       ],
       children: [
-        /* @__PURE__ */ jsxs(View, { style: styles2.header, children: [
-          comment.author.avatar ? /* @__PURE__ */ jsx(
-            View,
-            {
-              style: [
-                styles2.avatar,
-                {
-                  backgroundColor: theme.colors.backgroundSecondary,
-                  borderRadius: theme.borderRadius.full
-                }
-              ],
-              children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textMuted, fontSize: 10 }, children: getInitials(comment.author.name) })
-            }
-          ) : /* @__PURE__ */ jsx(
-            View,
-            {
-              style: [
-                styles2.avatar,
-                {
-                  backgroundColor: theme.colors.primary + "20",
-                  borderRadius: theme.borderRadius.full
-                }
-              ],
-              children: /* @__PURE__ */ jsx(
-                Text,
-                {
-                  style: {
-                    color: theme.colors.primary,
-                    fontSize: 11,
-                    fontWeight: "600"
-                  },
-                  children: getInitials(comment.author.name)
-                }
-              )
-            }
-          ),
-          /* @__PURE__ */ jsxs(View, { style: styles2.authorInfo, children: [
-            /* @__PURE__ */ jsxs(View, { style: styles2.nameRow, children: [
-              /* @__PURE__ */ jsx(
-                Text,
-                {
-                  style: {
-                    color: theme.colors.text,
-                    fontSize: theme.typography.sizeSm,
-                    fontWeight: "600"
-                  },
-                  children: comment.author.name || "Anonymous"
-                }
-              ),
-              isOfficial && /* @__PURE__ */ jsx(
-                View,
-                {
-                  style: [
-                    styles2.officialBadge,
-                    {
-                      backgroundColor: theme.colors.primary,
-                      borderRadius: theme.borderRadius.sm,
-                      marginLeft: theme.spacing.xs
-                    }
-                  ],
-                  children: /* @__PURE__ */ jsx(
-                    Text,
-                    {
-                      style: {
-                        color: theme.colors.textInverse,
-                        fontSize: 9,
-                        fontWeight: "700"
-                      },
-                      children: "TEAM"
-                    }
-                  )
-                }
-              )
-            ] }),
-            /* @__PURE__ */ jsx(
-              Text,
+        /* @__PURE__ */ jsx(
+          TouchableOpacity,
+          {
+            style: styles3.leftButton,
+            onPress: showBack ? handleBack : handleClose,
+            hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
+            children: showBack ? /* @__PURE__ */ jsx(View, { style: styles3.backIcon, children: /* @__PURE__ */ jsx(
+              View,
               {
-                style: {
-                  color: theme.colors.textMuted,
-                  fontSize: theme.typography.sizeXs
-                },
-                children: formatDate(comment.createdAt)
+                style: [
+                  styles3.chevron,
+                  {
+                    borderColor: theme.colors.text
+                  }
+                ]
               }
-            )
-          ] })
-        ] }),
+            ) }) : /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.text, fontSize: 24, fontWeight: "300" }, children: "\u2715" })
+          }
+        ),
         /* @__PURE__ */ jsx(
           Text,
           {
             style: [
-              styles2.content,
+              styles3.title,
               {
                 color: theme.colors.text,
-                fontSize: theme.typography.sizeMd,
-                lineHeight: theme.typography.sizeMd * theme.typography.lineHeightNormal,
-                marginTop: theme.spacing.sm
+                fontSize: theme.typography.sizeLg,
+                fontFamily: theme.typography.fontFamilyBold
               }
             ],
-            children: comment.content
-          }
-        )
-      ]
-    }
-  );
-}
-function formatDate2(dateString) {
-  const date = new Date(dateString);
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
-}
-function FeatureDetail() {
-  const theme = useTheme();
-  const feature = useSelectedFeature();
-  const comments = useComments();
-  const user = useUser();
-  const commentsLoading = store((s) => s.commentsLoading);
-  const [newComment, setNewComment] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  if (!feature) {
-    return /* @__PURE__ */ jsxs(View, { style: [styles.container, { backgroundColor: theme.colors.background }], children: [
-      /* @__PURE__ */ jsx(Header, { title: "Feature", showBack: true }),
-      /* @__PURE__ */ jsx(View, { style: styles.loadingContainer, children: /* @__PURE__ */ jsx(ActivityIndicator, { size: "large", color: theme.colors.primary }) })
-    ] });
-  }
-  const isAuthor = (user == null ? void 0 : user.id) === feature.author.id;
-  const handleUpvote = () => {
-    store.getState().toggleUpvote(feature.id);
-  };
-  const handleSubscribe = () => {
-    store.getState().toggleSubscription(feature.id);
-  };
-  const handleSubmitComment = async () => {
-    if (!newComment.trim() || submitting) return;
-    setSubmitting(true);
-    const success = await store.getState().addComment(feature.id, newComment.trim());
-    setSubmitting(false);
-    if (success) {
-      setNewComment("");
-    }
-  };
-  const handleDelete = () => {
-    Alert.alert(
-      "Delete Feature",
-      "Are you sure you want to delete this feature request? This action cannot be undone.",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            setDeleting(true);
-            await store.getState().deleteFeature(feature.id);
-            setDeleting(false);
-          }
-        }
-      ]
-    );
-  };
-  const handleDeleteComment = (commentId) => {
-    Alert.alert(
-      "Delete Comment",
-      "Are you sure you want to delete this comment?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            store.getState().deleteComment(commentId);
-          }
-        }
-      ]
-    );
-  };
-  const renderHeaderAction = () => {
-    if (!isAuthor) return null;
-    return /* @__PURE__ */ jsx(
-      TouchableOpacity,
-      {
-        onPress: handleDelete,
-        disabled: deleting,
-        hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
-        children: deleting ? /* @__PURE__ */ jsx(ActivityIndicator, { size: "small", color: theme.colors.error }) : /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.error, fontSize: 16 }, children: "\u{1F5D1}\uFE0F" })
-      }
-    );
-  };
-  return /* @__PURE__ */ jsx(
-    KeyboardAvoidingView,
-    {
-      style: { flex: 1 },
-      behavior: Platform.OS === "ios" ? "padding" : void 0,
-      children: /* @__PURE__ */ jsxs(View, { style: [styles.container, { backgroundColor: theme.colors.background }], children: [
-        /* @__PURE__ */ jsx(Header, { title: "Feature", showBack: true, rightAction: renderHeaderAction() }),
-        /* @__PURE__ */ jsxs(
-          ScrollView,
-          {
-            style: styles.scrollView,
-            contentContainerStyle: { padding: theme.spacing.md },
-            showsVerticalScrollIndicator: false,
-            children: [
-              /* @__PURE__ */ jsxs(
-                View,
-                {
-                  style: [
-                    styles.featureCard,
-                    {
-                      backgroundColor: theme.colors.surface,
-                      borderRadius: theme.borderRadius.lg,
-                      padding: theme.spacing.lg,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border
-                    }
-                  ],
-                  children: [
-                    /* @__PURE__ */ jsxs(View, { style: styles.headerRow, children: [
-                      /* @__PURE__ */ jsx(
-                        UpvoteButton,
-                        {
-                          count: feature.upvotes,
-                          hasUpvoted: feature.hasUpvoted,
-                          onPress: handleUpvote,
-                          size: "large"
-                        }
-                      ),
-                      /* @__PURE__ */ jsxs(View, { style: [styles.headerContent, { marginLeft: theme.spacing.md }], children: [
-                        /* @__PURE__ */ jsx(StatusBadge, { status: feature.status }),
-                        /* @__PURE__ */ jsx(
-                          Text,
-                          {
-                            style: [
-                              styles.title,
-                              {
-                                color: theme.colors.text,
-                                fontSize: theme.typography.sizeXl,
-                                fontFamily: theme.typography.fontFamilyBold,
-                                marginTop: theme.spacing.sm
-                              }
-                            ],
-                            children: feature.title
-                          }
-                        )
-                      ] })
-                    ] }),
-                    /* @__PURE__ */ jsx(
-                      Text,
-                      {
-                        style: [
-                          styles.description,
-                          {
-                            color: theme.colors.textSecondary,
-                            fontSize: theme.typography.sizeMd,
-                            lineHeight: theme.typography.sizeMd * theme.typography.lineHeightRelaxed,
-                            marginTop: theme.spacing.md
-                          }
-                        ],
-                        children: feature.description
-                      }
-                    ),
-                    /* @__PURE__ */ jsxs(
-                      View,
-                      {
-                        style: [
-                          styles.metaRow,
-                          {
-                            marginTop: theme.spacing.lg,
-                            paddingTop: theme.spacing.md,
-                            borderTopWidth: 1,
-                            borderTopColor: theme.colors.borderLight
-                          }
-                        ],
-                        children: [
-                          /* @__PURE__ */ jsxs(Text, { style: { color: theme.colors.textMuted, fontSize: theme.typography.sizeSm }, children: [
-                            "Posted by ",
-                            feature.author.name || "Anonymous",
-                            " \u2022 ",
-                            formatDate2(feature.createdAt)
-                          ] }),
-                          isAuthor && /* @__PURE__ */ jsx(
-                            View,
-                            {
-                              style: [
-                                styles.authorBadge,
-                                {
-                                  backgroundColor: theme.colors.primary + "15",
-                                  borderRadius: theme.borderRadius.sm,
-                                  marginLeft: theme.spacing.sm
-                                }
-                              ],
-                              children: /* @__PURE__ */ jsx(
-                                Text,
-                                {
-                                  style: {
-                                    color: theme.colors.primary,
-                                    fontSize: theme.typography.sizeXs,
-                                    fontWeight: "600"
-                                  },
-                                  children: "You"
-                                }
-                              )
-                            }
-                          )
-                        ]
-                      }
-                    ),
-                    /* @__PURE__ */ jsxs(View, { style: [styles.actionsRow, { marginTop: theme.spacing.md }], children: [
-                      /* @__PURE__ */ jsxs(
-                        TouchableOpacity,
-                        {
-                          style: [
-                            styles.actionButton,
-                            {
-                              backgroundColor: feature.isSubscribed ? theme.colors.subscribeActive + "15" : theme.colors.backgroundSecondary,
-                              borderRadius: theme.borderRadius.md,
-                              borderWidth: feature.isSubscribed ? 1.5 : 0,
-                              borderColor: feature.isSubscribed ? theme.colors.subscribeActive : "transparent"
-                            }
-                          ],
-                          onPress: handleSubscribe,
-                          children: [
-                            /* @__PURE__ */ jsx(Text, { style: { fontSize: 16 }, children: feature.isSubscribed ? "\u{1F514}" : "\u{1F515}" }),
-                            /* @__PURE__ */ jsx(
-                              Text,
-                              {
-                                style: {
-                                  color: feature.isSubscribed ? theme.colors.subscribeActive : theme.colors.text,
-                                  fontSize: theme.typography.sizeSm,
-                                  fontWeight: "600",
-                                  marginLeft: 6
-                                },
-                                children: feature.isSubscribed ? "Subscribed" : "Subscribe"
-                              }
-                            )
-                          ]
-                        }
-                      ),
-                      feature.category && /* @__PURE__ */ jsx(
-                        View,
-                        {
-                          style: [
-                            styles.categoryBadge,
-                            {
-                              backgroundColor: feature.category.color + "20",
-                              borderRadius: theme.borderRadius.sm,
-                              marginLeft: theme.spacing.sm
-                            }
-                          ],
-                          children: /* @__PURE__ */ jsx(
-                            Text,
-                            {
-                              style: {
-                                color: feature.category.color,
-                                fontSize: theme.typography.sizeSm,
-                                fontWeight: "500"
-                              },
-                              children: feature.category.name
-                            }
-                          )
-                        }
-                      )
-                    ] })
-                  ]
-                }
-              ),
-              /* @__PURE__ */ jsxs(View, { style: { marginTop: theme.spacing.xl }, children: [
-                /* @__PURE__ */ jsxs(
-                  Text,
-                  {
-                    style: {
-                      color: theme.colors.text,
-                      fontSize: theme.typography.sizeLg,
-                      fontWeight: "700",
-                      marginBottom: theme.spacing.md
-                    },
-                    children: [
-                      "Comments (",
-                      feature.commentCount,
-                      ")"
-                    ]
-                  }
-                ),
-                commentsLoading ? /* @__PURE__ */ jsx(View, { style: { paddingVertical: 20 }, children: /* @__PURE__ */ jsx(ActivityIndicator, { size: "small", color: theme.colors.primary }) }) : comments.length === 0 ? /* @__PURE__ */ jsxs(
-                  View,
-                  {
-                    style: [
-                      styles.emptyComments,
-                      {
-                        backgroundColor: theme.colors.surface,
-                        borderRadius: theme.borderRadius.md,
-                        padding: theme.spacing.lg
-                      }
-                    ],
-                    children: [
-                      /* @__PURE__ */ jsx(Text, { style: { fontSize: 32, marginBottom: 8 }, children: "\u{1F4AC}" }),
-                      /* @__PURE__ */ jsx(
-                        Text,
-                        {
-                          style: {
-                            color: theme.colors.textSecondary,
-                            fontSize: theme.typography.sizeMd,
-                            textAlign: "center"
-                          },
-                          children: "No comments yet. Be the first to share your thoughts!"
-                        }
-                      )
-                    ]
-                  }
-                ) : /* @__PURE__ */ jsx(
-                  View,
-                  {
-                    style: [
-                      styles.commentsList,
-                      {
-                        backgroundColor: theme.colors.surface,
-                        borderRadius: theme.borderRadius.lg,
-                        padding: theme.spacing.md
-                      }
-                    ],
-                    children: comments.map((comment) => /* @__PURE__ */ jsxs(View, { children: [
-                      /* @__PURE__ */ jsx(CommentItem, { comment }),
-                      (user == null ? void 0 : user.id) === comment.author.id && /* @__PURE__ */ jsx(
-                        TouchableOpacity,
-                        {
-                          style: [
-                            styles.deleteCommentBtn,
-                            { marginBottom: theme.spacing.sm }
-                          ],
-                          onPress: () => handleDeleteComment(comment.id),
-                          children: /* @__PURE__ */ jsx(
-                            Text,
-                            {
-                              style: {
-                                color: theme.colors.error,
-                                fontSize: theme.typography.sizeXs
-                              },
-                              children: "Delete"
-                            }
-                          )
-                        }
-                      )
-                    ] }, comment.id))
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsx(View, { style: { height: 100 } })
-            ]
+            numberOfLines: 1,
+            children: title
           }
         ),
-        user ? /* @__PURE__ */ jsx(
-          View,
-          {
-            style: [
-              styles.inputContainer,
-              {
-                backgroundColor: theme.colors.surface,
-                borderTopWidth: 1,
-                borderTopColor: theme.colors.border,
-                paddingHorizontal: theme.spacing.md,
-                paddingVertical: theme.spacing.sm,
-                paddingBottom: Platform.OS === "ios" ? 30 : theme.spacing.sm
-              }
-            ],
-            children: /* @__PURE__ */ jsxs(
-              View,
-              {
-                style: [
-                  styles.inputWrapper,
-                  {
-                    backgroundColor: theme.colors.backgroundSecondary,
-                    borderRadius: theme.borderRadius.lg
-                  }
-                ],
-                children: [
-                  /* @__PURE__ */ jsx(
-                    TextInput,
-                    {
-                      style: [
-                        styles.input,
-                        {
-                          color: theme.colors.text,
-                          fontSize: theme.typography.sizeMd
-                        }
-                      ],
-                      placeholder: "Add a comment...",
-                      placeholderTextColor: theme.colors.textMuted,
-                      value: newComment,
-                      onChangeText: setNewComment,
-                      multiline: true,
-                      maxLength: 1e3
-                    }
-                  ),
-                  /* @__PURE__ */ jsx(
-                    TouchableOpacity,
-                    {
-                      style: [
-                        styles.sendButton,
-                        {
-                          backgroundColor: newComment.trim() ? theme.colors.primary : theme.colors.backgroundSecondary,
-                          borderRadius: theme.borderRadius.full,
-                          opacity: submitting ? 0.6 : 1
-                        }
-                      ],
-                      onPress: handleSubmitComment,
-                      disabled: !newComment.trim() || submitting,
-                      children: submitting ? /* @__PURE__ */ jsx(ActivityIndicator, { size: "small", color: theme.colors.textInverse }) : /* @__PURE__ */ jsx(
-                        Text,
-                        {
-                          style: {
-                            color: newComment.trim() ? theme.colors.textInverse : theme.colors.textMuted,
-                            fontSize: 16
-                          },
-                          children: "\u27A4"
-                        }
-                      )
-                    }
-                  )
-                ]
-              }
-            )
-          }
-        ) : /* @__PURE__ */ jsx(
-          View,
-          {
-            style: [
-              styles.loginPrompt,
-              {
-                backgroundColor: theme.colors.surface,
-                borderTopWidth: 1,
-                borderTopColor: theme.colors.border,
-                padding: theme.spacing.md,
-                paddingBottom: Platform.OS === "ios" ? 30 : theme.spacing.md
-              }
-            ],
-            children: /* @__PURE__ */ jsx(
-              Text,
-              {
-                style: {
-                  color: theme.colors.textSecondary,
-                  fontSize: theme.typography.sizeMd,
-                  textAlign: "center"
-                },
-                children: "Sign in to leave a comment or vote"
-              }
-            )
-          }
-        )
-      ] })
+        /* @__PURE__ */ jsx(View, { style: styles3.rightButton, children: rightAction })
+      ]
     }
   );
 }
-var styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  scrollView: {
-    flex: 1
-  },
-  featureCard: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2
-  },
-  headerRow: {
-    flexDirection: "row"
-  },
-  headerContent: {
-    flex: 1
-  },
-  title: {
-    fontWeight: "700",
-    lineHeight: 28
-  },
-  description: {},
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center"
-  },
-  authorBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2
-  },
-  actionsRow: {
-    flexDirection: "row",
-    alignItems: "center"
-  },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 14
-  },
-  categoryBadge: {
-    paddingVertical: 6,
-    paddingHorizontal: 12
-  },
-  emptyComments: {
-    alignItems: "center"
-  },
-  commentsList: {},
-  deleteCommentBtn: {
-    alignSelf: "flex-start",
-    marginLeft: 42,
-    marginTop: -4
-  },
-  inputContainer: {},
-  inputWrapper: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingLeft: 16,
-    paddingRight: 6,
-    paddingVertical: 6
-  },
-  input: {
-    flex: 1,
-    maxHeight: 100,
-    paddingVertical: 8
-  },
-  sendButton: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8
-  },
-  loginPrompt: {}
-});
 var MAX_TITLE_LENGTH = 100;
 var MAX_DESCRIPTION_LENGTH = 2e3;
 function AddFeature() {
   const theme = useTheme();
-  const categories = useCategories();
   const isLoading = useIsLoading();
   const error = useError();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState();
   const [touched, setTouched] = useState({ title: false, description: false });
-  const styles2 = useMemo(() => StyleSheet.create({
+  const styles3 = useMemo(() => StyleSheet.create({
     container: {
       flex: 1
     },
@@ -2382,14 +1338,6 @@ function AddFeature() {
     },
     textArea: {
       minHeight: 140
-    },
-    categoryGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap"
-    },
-    categoryChip: {
-      paddingVertical: 10,
-      paddingHorizontal: 16
     },
     tipsCard: {},
     tipsList: {
@@ -2413,8 +1361,7 @@ function AddFeature() {
     if (!isValid || isLoading) return;
     await store.getState().createFeature(
       title.trim(),
-      description.trim(),
-      selectedCategory
+      description.trim()
     );
   };
   return /* @__PURE__ */ jsx(
@@ -2422,36 +1369,18 @@ function AddFeature() {
     {
       style: { flex: 1 },
       behavior: Platform.OS === "ios" ? "padding" : void 0,
-      children: /* @__PURE__ */ jsxs(View, { style: [styles2.container, { backgroundColor: theme.colors.background }], children: [
+      children: /* @__PURE__ */ jsxs(View, { style: [styles3.container, { backgroundColor: theme.colors.background }], children: [
         /* @__PURE__ */ jsx(
           Header,
           {
             title: "Submit Feature",
-            showBack: true,
-            rightAction: /* @__PURE__ */ jsx(
-              TouchableOpacity,
-              {
-                onPress: handleSubmit,
-                disabled: !isValid || isLoading,
-                children: isLoading ? /* @__PURE__ */ jsx(ActivityIndicator, { size: "small", color: theme.colors.primary }) : /* @__PURE__ */ jsx(
-                  Text,
-                  {
-                    style: {
-                      color: isValid ? theme.colors.primary : theme.colors.textMuted,
-                      fontSize: theme.typography.sizeMd,
-                      fontWeight: "600"
-                    },
-                    children: "Submit"
-                  }
-                )
-              }
-            )
+            showBack: true
           }
         ),
         /* @__PURE__ */ jsxs(
           ScrollView,
           {
-            style: styles2.scrollView,
+            style: styles3.scrollView,
             contentContainerStyle: { padding: theme.spacing.md },
             showsVerticalScrollIndicator: false,
             keyboardShouldPersistTaps: "handled",
@@ -2460,7 +1389,7 @@ function AddFeature() {
                 View,
                 {
                   style: [
-                    styles2.errorBanner,
+                    styles3.errorBanner,
                     {
                       backgroundColor: theme.colors.error + "15",
                       borderRadius: theme.borderRadius.md,
@@ -2471,8 +1400,8 @@ function AddFeature() {
                   children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.error, fontSize: theme.typography.sizeSm }, children: error })
                 }
               ),
-              /* @__PURE__ */ jsxs(View, { style: styles2.inputGroup, children: [
-                /* @__PURE__ */ jsxs(View, { style: styles2.labelRow, children: [
+              /* @__PURE__ */ jsxs(View, { style: styles3.inputGroup, children: [
+                /* @__PURE__ */ jsxs(View, { style: styles3.labelRow, children: [
                   /* @__PURE__ */ jsx(
                     Text,
                     {
@@ -2503,7 +1432,7 @@ function AddFeature() {
                   TextInput,
                   {
                     style: [
-                      styles2.input,
+                      styles3.input,
                       {
                         backgroundColor: theme.colors.surface,
                         borderRadius: theme.borderRadius.md,
@@ -2535,8 +1464,8 @@ function AddFeature() {
                   }
                 )
               ] }),
-              /* @__PURE__ */ jsxs(View, { style: [styles2.inputGroup, { marginTop: theme.spacing.lg }], children: [
-                /* @__PURE__ */ jsxs(View, { style: styles2.labelRow, children: [
+              /* @__PURE__ */ jsxs(View, { style: [styles3.inputGroup, { marginTop: theme.spacing.lg }], children: [
+                /* @__PURE__ */ jsxs(View, { style: styles3.labelRow, children: [
                   /* @__PURE__ */ jsx(
                     Text,
                     {
@@ -2564,10 +1493,21 @@ function AddFeature() {
                   )
                 ] }),
                 /* @__PURE__ */ jsx(
+                  Text,
+                  {
+                    style: {
+                      color: theme.colors.textMuted,
+                      fontSize: theme.typography.sizeXs,
+                      marginTop: theme.spacing.xs
+                    },
+                    children: "Min 20 characters"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
                   TextInput,
                   {
                     style: [
-                      styles2.textArea,
+                      styles3.textArea,
                       {
                         backgroundColor: theme.colors.surface,
                         borderRadius: theme.borderRadius.md,
@@ -2602,59 +1542,11 @@ function AddFeature() {
                   }
                 )
               ] }),
-              categories.length > 0 && /* @__PURE__ */ jsxs(View, { style: [styles2.inputGroup, { marginTop: theme.spacing.lg }], children: [
-                /* @__PURE__ */ jsx(
-                  Text,
-                  {
-                    style: {
-                      color: theme.colors.text,
-                      fontSize: theme.typography.sizeMd,
-                      fontWeight: "600",
-                      marginBottom: theme.spacing.sm
-                    },
-                    children: "Category (optional)"
-                  }
-                ),
-                /* @__PURE__ */ jsx(View, { style: styles2.categoryGrid, children: categories.map((cat) => {
-                  const isSelected = selectedCategory === cat.id;
-                  return /* @__PURE__ */ jsx(
-                    TouchableOpacity,
-                    {
-                      style: [
-                        styles2.categoryChip,
-                        {
-                          backgroundColor: isSelected ? cat.color + "20" : theme.colors.surface,
-                          borderRadius: theme.borderRadius.md,
-                          borderWidth: isSelected ? 1.5 : 1,
-                          borderColor: isSelected ? cat.color : theme.colors.border,
-                          marginRight: theme.spacing.sm,
-                          marginBottom: theme.spacing.sm
-                        }
-                      ],
-                      onPress: () => setSelectedCategory(
-                        isSelected ? void 0 : cat.id
-                      ),
-                      children: /* @__PURE__ */ jsx(
-                        Text,
-                        {
-                          style: {
-                            color: isSelected ? cat.color : theme.colors.text,
-                            fontSize: theme.typography.sizeSm,
-                            fontWeight: isSelected ? "600" : "400"
-                          },
-                          children: cat.name
-                        }
-                      )
-                    },
-                    cat.id
-                  );
-                }) })
-              ] }),
               /* @__PURE__ */ jsxs(
                 View,
                 {
                   style: [
-                    styles2.tipsCard,
+                    styles3.tipsCard,
                     {
                       backgroundColor: theme.colors.info + "10",
                       borderRadius: theme.borderRadius.md,
@@ -2675,11 +1567,11 @@ function AddFeature() {
                         children: "\u{1F4A1} Tips for a great feature request"
                       }
                     ),
-                    /* @__PURE__ */ jsxs(View, { style: styles2.tipsList, children: [
-                      /* @__PURE__ */ jsx(Text, { style: [styles2.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Be specific about what you want" }),
-                      /* @__PURE__ */ jsx(Text, { style: [styles2.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Explain the problem it solves" }),
-                      /* @__PURE__ */ jsx(Text, { style: [styles2.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Describe how it would benefit others" }),
-                      /* @__PURE__ */ jsx(Text, { style: [styles2.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Search for existing requests first" })
+                    /* @__PURE__ */ jsxs(View, { style: styles3.tipsList, children: [
+                      /* @__PURE__ */ jsx(Text, { style: [styles3.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Be specific about what you want" }),
+                      /* @__PURE__ */ jsx(Text, { style: [styles3.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Explain the problem it solves" }),
+                      /* @__PURE__ */ jsx(Text, { style: [styles3.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Describe how it would benefit others" }),
+                      /* @__PURE__ */ jsx(Text, { style: [styles3.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Search for existing requests first" })
                     ] })
                   ]
                 }
@@ -2691,7 +1583,7 @@ function AddFeature() {
           View,
           {
             style: [
-              styles2.bottomBar,
+              styles3.bottomBar,
               {
                 backgroundColor: theme.colors.surface,
                 borderTopWidth: 1,
@@ -2704,7 +1596,7 @@ function AddFeature() {
               TouchableOpacity,
               {
                 style: [
-                  styles2.submitButton,
+                  styles3.submitButton,
                   {
                     backgroundColor: isValid ? theme.colors.primary : theme.colors.backgroundSecondary,
                     borderRadius: theme.borderRadius.md,
@@ -2735,15 +1627,8 @@ function AddFeature() {
 function ModalContent() {
   const viewState = useViewState();
   const theme = useThemeStore();
-  const styles2 = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1
-    }
-  }), []);
   const renderContent = () => {
     switch (viewState.type) {
-      case "feature":
-        return /* @__PURE__ */ jsx(FeatureDetail, {});
       case "add-feature":
         return /* @__PURE__ */ jsx(AddFeature, {});
       case "board":
@@ -2751,7 +1636,7 @@ function ModalContent() {
         return /* @__PURE__ */ jsx(FeatureBoard, {});
     }
   };
-  return /* @__PURE__ */ jsx(ThemeProvider, { value: theme, children: /* @__PURE__ */ jsxs(View, { style: [styles2.container, { backgroundColor: theme.colors.background }], children: [
+  return /* @__PURE__ */ jsx(ThemeProvider, { value: theme, children: /* @__PURE__ */ jsxs(View, { style: { flex: 1, backgroundColor: theme.colors.background }, children: [
     /* @__PURE__ */ jsx(
       StatusBar,
       {
@@ -2778,7 +1663,7 @@ function FeedbackModal() {
     }
   );
 }
-function ProdFeedbackProvider({
+function FeaturedDeckProvider({
   children,
   theme: customTheme
 }) {
@@ -2793,137 +1678,45 @@ function ProdFeedbackProvider({
     /* @__PURE__ */ jsx(FeedbackModal, {})
   ] });
 }
-function DefaultIcon({ color }) {
-  return /* @__PURE__ */ jsx(View, { style: iconStyles.iconContainer, children: /* @__PURE__ */ jsx(View, { style: [iconStyles.bubble, { borderColor: color }], children: /* @__PURE__ */ jsx(Text, { style: [iconStyles.plus, { color }], children: "+" }) }) });
+
+// src/hooks/index.ts
+function useFeatures2() {
+  return store((s) => s.features);
 }
-var iconStyles = StyleSheet.create({
-  iconContainer: {
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  bubble: {
-    width: 24,
-    height: 20,
-    borderWidth: 2,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  plus: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginTop: -2
-  }
-});
-function FeedbackButton({
-  position = "bottom-right",
-  offset = { x: 20, y: 40 },
-  size = 56,
-  icon,
-  label = "Feedback",
-  showLabel = false,
-  style
-}) {
-  const theme = useThemeStore();
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const styles2 = useMemo(() => StyleSheet.create({
-    button: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center"
-    },
-    shadow: {
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 8
-    },
-    label: {
-      fontWeight: "600"
-    }
-  }), []);
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.92,
-      useNativeDriver: true
-    }).start();
+function useFeature(featureId) {
+  return store((s) => s.features.find((f) => f.id === featureId));
+}
+function useIsLoading2() {
+  return store((s) => s.isLoading);
+}
+function useError2() {
+  return store((s) => s.error);
+}
+function useVisible2() {
+  return store((s) => s.visible);
+}
+function useUser2() {
+  return useUser();
+}
+function useUpvote(featureId) {
+  var _a, _b;
+  const feature = store((s) => s.features.find((f) => f.id === featureId));
+  return {
+    upvotesCount: (_a = feature == null ? void 0 : feature.upvotesCount) != null ? _a : 0,
+    hasUpvoted: (_b = feature == null ? void 0 : feature.hasUpvoted) != null ? _b : false,
+    toggle: () => store.getState().toggleUpvote(featureId)
   };
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      friction: 3,
-      tension: 100,
-      useNativeDriver: true
-    }).start();
+}
+function useRoadmap() {
+  const features = store((s) => s.roadmapFeatures);
+  const loading = store((s) => s.roadmapLoading);
+  return {
+    features,
+    loading,
+    refresh: () => store.getState().loadRoadmap()
   };
-  const handlePress = () => {
-    store.getState().open();
-  };
-  const positionStyle = useMemo(() => {
-    const posStyles = { position: "absolute" };
-    switch (position) {
-      case "bottom-right":
-        posStyles.bottom = offset.y;
-        posStyles.right = offset.x;
-        break;
-      case "bottom-left":
-        posStyles.bottom = offset.y;
-        posStyles.left = offset.x;
-        break;
-      case "top-right":
-        posStyles.top = offset.y;
-        posStyles.right = offset.x;
-        break;
-      case "top-left":
-        posStyles.top = offset.y;
-        posStyles.left = offset.x;
-        break;
-    }
-    return posStyles;
-  }, [position, offset]);
-  const buttonStyle = {
-    width: showLabel ? void 0 : size,
-    height: size,
-    borderRadius: showLabel ? size / 2 : size / 2,
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: showLabel ? theme.spacing.lg : 0
-  };
-  return /* @__PURE__ */ jsx(
-    Animated.View,
-    {
-      style: [
-        positionStyle,
-        { transform: [{ scale: scaleAnim }] },
-        styles2.shadow,
-        { shadowColor: theme.colors.shadow },
-        style
-      ],
-      children: /* @__PURE__ */ jsxs(
-        TouchableOpacity,
-        {
-          style: [styles2.button, buttonStyle],
-          onPress: handlePress,
-          onPressIn: handlePressIn,
-          onPressOut: handlePressOut,
-          activeOpacity: 1,
-          children: [
-            icon || /* @__PURE__ */ jsx(DefaultIcon, { color: theme.colors.textInverse }),
-            showLabel && /* @__PURE__ */ jsx(Text, { style: [
-              styles2.label,
-              {
-                color: theme.colors.textInverse,
-                fontFamily: theme.typography.fontFamilyBold,
-                fontSize: theme.typography.sizeMd,
-                marginLeft: theme.spacing.sm
-              }
-            ], children: label })
-          ]
-        }
-      )
-    }
-  );
 }
 
-export { FeedbackButton, ProdFeedback, ProdFeedbackProvider, createThemeFromColor, darkTheme, getStatusColor, getStatusLabel, lightTheme, mergeTheme, useCategories, useComments, useDeleteFeature, useError2 as useError, useFeature, useFeatures2 as useFeatures, useFilters, useIsFeatureAuthor, useIsLoading2 as useIsLoading, useProdFeedbackActions, useSelectedFeature2 as useSelectedFeature, useSubscription, useTheme, useUpvote, useUser2 as useUser, useVisible2 as useVisible };
+export { FeaturedDeck, FeaturedDeckProvider, createThemeFromColor, darkTheme, getStatusColor, getStatusLabel, lightTheme, mergeTheme, useError2 as useError, useFeature, useFeatures2 as useFeatures, useIsLoading2 as useIsLoading, useRoadmap, useTheme, useUpvote, useUser2 as useUser, useVisible2 as useVisible };
 //# sourceMappingURL=index.mjs.map
 //# sourceMappingURL=index.mjs.map

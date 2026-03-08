@@ -30,6 +30,7 @@ const defaultColors: ThemeColors = {
   info: '#3B82F6',
   
   // Feature status
+  statusOpen: '#3B82F6',
   statusUnderReview: '#8B5CF6',
   statusPlanned: '#3B82F6',
   statusInProgress: '#F59E0B',
@@ -45,8 +46,6 @@ const defaultColors: ThemeColors = {
   // Interactive
   upvote: '#94A3B8',
   upvoteActive: '#6366F1',
-  subscribe: '#94A3B8',
-  subscribeActive: '#F59E0B',
 };
 
 const darkColors: ThemeColors = {
@@ -74,6 +73,7 @@ const darkColors: ThemeColors = {
   info: '#60A5FA',
   
   // Feature status
+  statusOpen: '#60A5FA',
   statusUnderReview: '#A78BFA',
   statusPlanned: '#60A5FA',
   statusInProgress: '#FBBF24',
@@ -89,8 +89,6 @@ const darkColors: ThemeColors = {
   // Interactive
   upvote: '#64748B',
   upvoteActive: '#818CF8',
-  subscribe: '#64748B',
-  subscribeActive: '#FBBF24',
 };
 
 const defaultSpacing: ThemeSpacing = {
@@ -171,6 +169,7 @@ export function mergeTheme(baseTheme: Theme, customTheme?: Partial<Theme>): Them
 
 export function getStatusColor(status: string, colors: ThemeColors): string {
   const statusColorMap: Record<string, string> = {
+    open: colors.statusOpen,
     under_review: colors.statusUnderReview,
     planned: colors.statusPlanned,
     in_progress: colors.statusInProgress,
@@ -182,6 +181,7 @@ export function getStatusColor(status: string, colors: ThemeColors): string {
 
 export function getStatusLabel(status: string): string {
   const statusLabelMap: Record<string, string> = {
+    open: 'Open',
     under_review: 'Under Review',
     planned: 'Planned',
     in_progress: 'In Progress',
@@ -201,6 +201,7 @@ export function createThemeFromColor(primaryColor: string, isDark = false): Part
     isDark,
   };
 }
+
 
 
 

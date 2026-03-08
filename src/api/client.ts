@@ -8,7 +8,7 @@ export function setApiKey(key: string) {
 
 export function getApiKey(): string {
   if (!apiKey) {
-    throw new Error('[ProdFeedback] API key not set. Call ProdFeedback.init() first.');
+    throw new Error('[FeaturedDeck] API key not set. Call FeaturedDeck.init() first.');
   }
   return apiKey;
 }
@@ -80,4 +80,3 @@ export async function put<T = any>(endpoint: string, body?: any): Promise<ApiRes
 export async function del<T = any>(endpoint: string): Promise<ApiResponse<T>> {
   return request<T>(endpoint, { method: 'DELETE' });
 }
-

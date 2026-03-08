@@ -1,7 +1,7 @@
 {
-  "name": "@prodfeedback/react-native",
+  "name": "@featuredeck/react-native",
   "version": "0.1.0",
-  "description": "Beautiful in-app feedback SDK for React Native - feature requests, upvotes, comments & subscriptions",
+  "description": "Beautiful in-app feedback SDK for React Native - feature requests, upvotes, comments & roadmap",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -17,7 +17,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/prodfeedback/prodfeedback-rn"
+    "url": "https://github.com/featuredeck/featuredeck-rn"
   },
   "keywords": [
     "react-native",

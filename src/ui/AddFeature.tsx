@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme';
 import { store, useIsLoading, useError } from '../state/store';
-import { useCategories } from '../hooks';
 import { Header } from './components/Header';
 
 const MAX_TITLE_LENGTH = 100;
@@ -20,13 +19,11 @@ const MAX_DESCRIPTION_LENGTH = 2000;
 
 export function AddFeature() {
   const theme = useTheme();
-  const categories = useCategories();
   const isLoading = useIsLoading();
   const error = useError();
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [touched, setTouched] = useState({ title: false, description: false });
 
   const styles = useMemo(() => StyleSheet.create({
@@ -48,14 +45,6 @@ export function AddFeature() {
     },
     textArea: {
       minHeight: 140,
-    },
-    categoryGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-    },
-    categoryChip: {
-      paddingVertical: 10,
-      paddingHorizontal: 16,
     },
     tipsCard: {},
     tipsList: {
@@ -87,15 +76,10 @@ export function AddFeature() {
   const handleSubmit = async () => {
     if (!isValid || isLoading) return;
     
-    const success = await store.getState().createFeature(
+    await store.getState().createFeature(
       title.trim(),
-      description.trim(),
-      selectedCategory
+      description.trim()
     );
-    
-    if (success) {
-      // Will navigate back automatically via store
-    }
   };
 
   return (
@@ -107,26 +91,7 @@ export function AddFeature() {
         <Header 
           title="Submit Feature" 
           showBack 
-          rightAction={
-            <TouchableOpacity
-              onPress={handleSubmit}
-              disabled={!isValid || isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-              ) : (
-                <Text
-                  style={{
-                    color: isValid ? theme.colors.primary : theme.colors.textMuted,
-                    fontSize: theme.typography.sizeMd,
-                    fontWeight: '600',
-                  }}
-                >
-                  Submit
-                </Text>
-              )}
-            </TouchableOpacity>
-          }
+
         />
 
         <ScrollView
@@ -230,6 +195,15 @@ export function AddFeature() {
                 {description.length}/{MAX_DESCRIPTION_LENGTH}
               </Text>
             </View>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontSize: theme.typography.sizeXs,
+                marginTop: theme.spacing.xs,
+              }}
+            >
+              Min 20 characters
+            </Text>
             <TextInput
               style={[
                 styles.textArea,
@@ -266,58 +240,6 @@ export function AddFeature() {
               </Text>
             )}
           </View>
-
-          {/* Category Selection */}
-          {categories.length > 0 && (
-            <View style={[styles.inputGroup, { marginTop: theme.spacing.lg }]}>
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontSize: theme.typography.sizeMd,
-                  fontWeight: '600',
-                  marginBottom: theme.spacing.sm,
-                }}
-              >
-                Category (optional)
-              </Text>
-              <View style={styles.categoryGrid}>
-                {categories.map((cat) => {
-                  const isSelected = selectedCategory === cat.id;
-                  return (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[
-                        styles.categoryChip,
-                        {
-                          backgroundColor: isSelected
-                            ? cat.color + '20'
-                            : theme.colors.surface,
-                          borderRadius: theme.borderRadius.md,
-                          borderWidth: isSelected ? 1.5 : 1,
-                          borderColor: isSelected ? cat.color : theme.colors.border,
-                          marginRight: theme.spacing.sm,
-                          marginBottom: theme.spacing.sm,
-                        },
-                      ]}
-                      onPress={() => setSelectedCategory(
-                        isSelected ? undefined : cat.id
-                      )}
-                    >
-                      <Text
-                        style={{
-                          color: isSelected ? cat.color : theme.colors.text,
-                          fontSize: theme.typography.sizeSm,
-                          fontWeight: isSelected ? '600' : '400',
-                        }}
-                      >
-                        {cat.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          )}
 
           {/* Tips Section */}
           <View
@@ -358,7 +280,7 @@ export function AddFeature() {
           </View>
         </ScrollView>
 
-        {/* Bottom Submit Button (for mobile) */}
+        {/* Bottom Submit Button */}
         <View
           style={[
             styles.bottomBar,
@@ -402,6 +324,3 @@ export function AddFeature() {
     </KeyboardAvoidingView>
   );
 }
-
-
-

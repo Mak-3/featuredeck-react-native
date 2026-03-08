@@ -1,180 +1,141 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
-  TouchableOpacity,
   View,
   Text,
+  TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useTheme } from '../../theme';
 import { Feature } from '../../types';
 import { StatusBadge } from './StatusBadge';
 import { UpvoteButton } from './UpvoteButton';
-import { store } from '../../state/store';
+import { store, useUser } from '../../state/store';
 
 interface FeatureCardProps {
   feature: Feature;
-  onPress?: () => void;
 }
 
-export function FeatureCard({ feature, onPress }: FeatureCardProps) {
+export function FeatureCard({ feature }: FeatureCardProps) {
   const theme = useTheme();
-  
-  const styles = useMemo(() => StyleSheet.create({
-    container: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.05,
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    row: {
-      flexDirection: 'row',
-    },
-    content: {
-      flex: 1,
-    },
-    title: {
-      fontWeight: '600',
-      lineHeight: 22,
-    },
-    description: {
-      lineHeight: 20,
-    },
-    footer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    commentCount: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    commentText: {
-      fontWeight: '500',
-    },
-    category: {},
-  }), []);
+  const user = useUser();
+
+  const isAuthor = !!user && !!feature.createdByEndUserId && user.id === feature.createdByEndUserId;
 
   const handleUpvote = () => {
     store.getState().toggleUpvote(feature.id);
   };
 
-  const handlePress = () => {
-    if (onPress) {
-      onPress();
-    } else {
-      store.getState().openFeature(feature.id);
-    }
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Feature',
+      'Are you sure you want to delete this feature request?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => store.getState().deleteFeature(feature.id),
+        },
+      ]
+    );
   };
 
   return (
-    <TouchableOpacity
+    <View
       style={[
         styles.container,
         {
           backgroundColor: theme.colors.surface,
-          borderRadius: theme.borderRadius.lg,
-          padding: theme.spacing.md,
-          marginBottom: theme.spacing.sm,
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 10,
           borderWidth: 1,
           borderColor: theme.colors.border,
         },
       ]}
-      onPress={handlePress}
-      activeOpacity={0.7}
     >
       <View style={styles.row}>
-        {/* Upvote Button */}
         <UpvoteButton
-          count={feature.upvotes}
+          count={feature.upvotesCount}
           hasUpvoted={feature.hasUpvoted}
           onPress={handleUpvote}
           size="small"
         />
 
-        {/* Content */}
-        <View style={[styles.content, { marginLeft: theme.spacing.md }]}>
-          {/* Title */}
+        <View style={{ flex: 1, marginLeft: 14 }}>
           <Text
-            style={[
-              styles.title,
-              {
-                color: theme.colors.text,
-                fontSize: theme.typography.sizeMd,
-                fontFamily: theme.typography.fontFamilyBold,
-              },
-            ]}
+            style={{
+              color: theme.colors.text,
+              fontSize: 15,
+              fontWeight: '600',
+              lineHeight: 22,
+            }}
             numberOfLines={2}
           >
             {feature.title}
           </Text>
 
-          {/* Description Preview */}
-          <Text
-            style={[
-              styles.description,
-              {
+          {feature.description && (
+            <Text
+              style={{
                 color: theme.colors.textSecondary,
-                fontSize: theme.typography.sizeSm,
-                marginTop: theme.spacing.xs,
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {feature.description}
-          </Text>
+                fontSize: 13,
+                marginTop: 4,
+                lineHeight: 19,
+              }}
+              numberOfLines={2}
+            >
+              {feature.description}
+            </Text>
+          )}
 
-          {/* Footer */}
-          <View style={[styles.footer, { marginTop: theme.spacing.sm }]}>
+          <View style={styles.footer}>
             <StatusBadge status={feature.status} size="small" />
-            
-            {/* Comments count */}
-            <View style={[styles.commentCount, { marginLeft: theme.spacing.md }]}>
-              <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>💬</Text>
-              <Text
-                style={[
-                  styles.commentText,
-                  {
-                    color: theme.colors.textMuted,
-                    fontSize: theme.typography.sizeSm,
-                    marginLeft: 4,
-                  },
-                ]}
-              >
-                {feature.commentCount}
-              </Text>
-            </View>
 
-            {/* Category if exists */}
-            {feature.category && (
-              <View
+            {isAuthor && (
+              <TouchableOpacity
+                onPress={handleDelete}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={[
-                  styles.category,
+                  styles.deleteButton,
                   {
-                    backgroundColor: feature.category.color + '20',
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: theme.borderRadius.sm,
-                    marginLeft: 'auto',
+                    backgroundColor: theme.colors.error + '12',
+                    borderRadius: 6,
                   },
                 ]}
               >
-                <Text
-                  style={{
-                    color: feature.category.color,
-                    fontSize: theme.typography.sizeXs,
-                    fontWeight: '500',
-                  }}
-                >
-                  {feature.category.name}
+                <Text style={{ color: theme.colors.error, fontSize: 12, fontWeight: '500' }}>
+                  Delete
                 </Text>
-              </View>
+              </TouchableOpacity>
             )}
           </View>
         </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
-
-
+const styles = StyleSheet.create({
+  container: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  row: {
+    flexDirection: 'row',
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  deleteButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+});

@@ -1,77 +1,65 @@
 // ============================================
-// ProdFeedback SDK Types
+// FeaturedDeck SDK Types
 // ============================================
 
-export type FeedbackType = 'bug' | 'feature' | 'improvement' | 'other';
-
-export type FeedbackStatus = 
-  | 'new'
+export type FeatureStatus =
+  | 'open'
   | 'under_review'
   | 'planned'
   | 'in_progress'
   | 'completed'
   | 'declined';
 
-export type FeatureStatus = FeedbackStatus;
-
-// Feature priority
 export type FeaturePriority = 'low' | 'medium' | 'high' | 'critical';
 
-export interface Category {
-  id: string;
-  name: string;
-  color: string;
-  icon?: string;
-}
+export type RoadmapFeatureStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled';
 
-// User information
-export interface User {
-  id: string;
+export type RoadmapFeatureVisibility = 'public' | 'private';
+
+// What the SDK consumer passes to setUser()
+export interface UserInput {
+  externalUserId: string;
+  username?: string;
   email?: string;
-  name?: string;
-  avatar?: string;
-  metadata?: Record<string, any>;
 }
 
-export interface Comment {
+// Resolved end_user from the API (includes DB-assigned id)
+export interface User extends UserInput {
   id: string;
-  featureId: string;
-  content: string;
-  author: User;
-  createdAt: string;
-  updatedAt?: string;
-  isOfficial?: boolean;
-  parentId?: string;
-  replies?: Comment[];
 }
 
-export interface Feedback {
+export interface Feature {
   id: string;
+  projectId: string;
   title: string;
-  description: string;
-  type: FeedbackType;
-  status: FeedbackStatus;
-  priority: number;
-  upvotes: number;
+  description: string | null;
+  status: FeatureStatus;
+  priority: FeaturePriority;
+  createdByEndUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  upvotesCount: number;
   hasUpvoted: boolean;
   author?: User;
-  createdAt: string;
-  metadata?: Record<string, any>;
 }
 
-export interface Feature extends Feedback {
-  commentCount?: number;
-  isSubscribed?: boolean;
-  category?: Category;
-}
-
-// Board configuration
-export interface Board {
+export interface FeatureVote {
   id: string;
-  name: string;
-  description?: string;
-  features: Feature[];
-  categories: Category[];
+  featureRequestId: string;
+  endUserId: string;
+  createdAt: string;
+}
+
+export interface RoadmapFeature {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  status: RoadmapFeatureStatus;
+  visibility: RoadmapFeatureVisibility;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Theme configuration
@@ -100,6 +88,7 @@ export interface ThemeColors {
   info: string;
   
   // Feature status colors
+  statusOpen: string;
   statusUnderReview: string;
   statusPlanned: string;
   statusInProgress: string;
@@ -115,8 +104,6 @@ export interface ThemeColors {
   // Interactive
   upvote: string;
   upvoteActive: string;
-  subscribe: string;
-  subscribeActive: string;
 }
 
 export interface ThemeSpacing {
@@ -163,32 +150,13 @@ export interface Theme {
   isDark: boolean;
 }
 
-
 // Provider props
-export interface ProdFeedbackProviderProps {
+export interface FeaturedDeckProviderProps {
   children: React.ReactNode;
   theme?: Partial<Theme>;
 }
 
-// Feedback button props
-export interface FeedbackButtonProps {
-  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
-  offset?: { x: number; y: number };
-  size?: number;
-  icon?: React.ReactNode;
-  label?: string;
-  showLabel?: boolean;
-  style?: any;
-}
-
-export interface FeatureFilters {
-  status?: FeedbackStatus[];
-  type?: FeedbackType[];
-  sortBy?: 'newest' | 'oldest' | 'most_upvotes' | 'trending';
-  searchQuery?: string;
-}
-
-// API response types (kept for compatibility)
+// API response types
 export interface ApiResponse<T> {
   data: T;
   success: boolean;
@@ -207,13 +175,5 @@ export interface PaginatedResponse<T> {
 export interface CreateFeatureInput {
   title: string;
   description: string;
-  categoryId?: string;
-  tags?: string[];
 }
 
-// Create comment input
-export interface CreateCommentInput {
-  featureId: string;
-  content: string;
-  parentId?: string;
-}

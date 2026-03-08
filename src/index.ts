@@ -1,19 +1,12 @@
 // ============================================
-// ProdFeedback React Native SDK
+// FeaturedDeck React Native SDK
 // ============================================
 
-// Core SDK
-export { ProdFeedback } from './core/ProdFeedback';
-export type { ProdFeedbackConfig } from './core/ProdFeedback';
+export { FeaturedDeck } from './core/FeaturedDeck';
+export type { FeaturedDeckConfig } from './core/FeaturedDeck';
 
+export { FeaturedDeckProvider } from './provider/FeaturedDeckProvider';
 
-// Provider
-export { ProdFeedbackProvider } from './provider/ProdFeedbackProvider';
-
-// UI Components
-export { FeedbackButton } from './ui/FeedbackButton';
-
-// Theme
 export { 
   lightTheme, 
   darkTheme, 
@@ -24,57 +17,39 @@ export {
   getStatusLabel,
 } from './theme';
 
-// Hooks
 export {
   useFeatures,
   useFeature,
-  useSelectedFeature,
-  useComments,
-  useCategories,
-  useFilters,
   useIsLoading,
   useError,
   useVisible,
   useUser,
-  useIsFeatureAuthor,
-  useProdFeedbackActions,
   useUpvote,
-  useSubscription,
-  useDeleteFeature,
+  useRoadmap,
 } from './hooks';
 
-// Types
 export type {
-  // Feature types
   Feature,
   FeatureStatus,
   FeaturePriority,
-  FeatureFilters,
+  FeatureVote,
   CreateFeatureInput,
-  
-  // Comment types
-  Comment,
-  CreateCommentInput,
-  
-  // User types
+
+  RoadmapFeature,
+  RoadmapFeatureStatus,
+  RoadmapFeatureVisibility,
+
   User,
-  
-  // Category types
-  Category,
-  
-  // Theme types
+  UserInput,
+
   Theme,
   ThemeColors,
   ThemeSpacing,
   ThemeTypography,
   ThemeBorderRadius,
-  
-  // Config types
-  ProdFeedbackProviderProps,
-  FeedbackButtonProps,
-  
-  // API types
+
+  FeaturedDeckProviderProps,
+
   ApiResponse,
   PaginatedResponse,
-  Board,
 } from './types';

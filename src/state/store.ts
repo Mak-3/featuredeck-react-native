@@ -2,24 +2,41 @@ import { create } from 'zustand';
 import {
   Feature,
   User,
+  UserInput,
+  RoadmapFeature,
   Theme,
-  FeatureFilters,
 } from '../types';
 import { lightTheme, darkTheme, mergeTheme } from '../theme';
 import { 
+  identifyEndUser,
   fetchFeatures,
-  fetchFeature,
   createFeature as createFeatureQuery,
   deleteFeature as deleteFeatureQuery,
   toggleUpvote as toggleUpvoteQuery,
+  fetchRoadmap as fetchRoadmapQuery,
 } from '../api';
 import { setApiKey } from '../api';
 
 type ViewState = 
   | { type: 'board' }
-  | { type: 'feature'; featureId: string }
-  | { type: 'add-feature' }
-  | { type: 'roadmap' };
+  | { type: 'add-feature' };
+
+const pendingVotes = new Set<string>();
+
+function mergePreservingPendingVotes(incoming: Feature[], current: Feature[]): Feature[] {
+  if (pendingVotes.size === 0) return incoming;
+
+  const currentMap = new Map(current.map(f => [f.id, f]));
+  return incoming.map(f => {
+    if (pendingVotes.has(f.id)) {
+      const local = currentMap.get(f.id);
+      if (local) {
+        return { ...f, upvotesCount: local.upvotesCount, hasUpvoted: local.hasUpvoted };
+      }
+    }
+    return f;
+  });
+}
 
 interface State {
   apiKey: string | null;
@@ -37,31 +54,30 @@ interface State {
   featuresTotal: number;
   featuresPage: number;
   featuresHasMore: boolean;
-  selectedFeature: Feature | null;
   
-  filters: FeatureFilters;
+  roadmapFeatures: RoadmapFeature[];
+  roadmapLoading: boolean;
   
   init: (options: {
     apiKey: string;
     theme?: Partial<Theme>;
   }) => Promise<void>;
-  setUser: (user: User | null) => void;
+  setUser: (user: UserInput | null) => Promise<void>;
   setTheme: (theme: Partial<Theme>) => void;
   
   open: () => void;
   close: () => void;
   navigateTo: (view: ViewState) => void;
-  openFeature: (featureId: string) => void;
   openAddFeature: () => void;
   goBack: () => void;
   
   loadFeatures: (refresh?: boolean) => Promise<void>;
   loadMoreFeatures: () => Promise<void>;
-  loadFeature: (featureId: string) => Promise<void>;
-  createFeature: (title: string, description: string, type?: 'bug' | 'feature' | 'improvement' | 'other') => Promise<boolean>;
+  createFeature: (title: string, description: string) => Promise<boolean>;
   deleteFeature: (featureId: string) => Promise<boolean>;
   toggleUpvote: (featureId: string) => Promise<void>;
-  setFilters: (filters: Partial<FeatureFilters>) => void;
+  
+  loadRoadmap: () => Promise<void>;
 }
 
 export const store = create<State>((set, get) => ({
@@ -80,11 +96,9 @@ export const store = create<State>((set, get) => ({
   featuresTotal: 0,
   featuresPage: 1,
   featuresHasMore: false,
-  selectedFeature: null,
   
-  filters: {
-    sortBy: 'trending',
-  },
+  roadmapFeatures: [],
+  roadmapLoading: false,
   
   init: async (options) => {
     const { apiKey, theme } = options;
@@ -101,15 +115,31 @@ export const store = create<State>((set, get) => ({
         ready: true,
       });
       
-      console.log('[ProdFeedback] SDK initialized');
+      console.log('[FeaturedDeck] SDK initialized');
     } catch (error: any) {
-      console.error('[ProdFeedback] Failed to initialize:', error);
+      console.error('[FeaturedDeck] Failed to initialize:', error);
       set({ error: error.message || 'Failed to initialize SDK' });
     }
   },
   
-  setUser: (user) => {
-    set({ user });
+  setUser: async (input) => {
+    if (!input) {
+      set({ user: null });
+      return;
+    }
+    
+    try {
+      const resolved = await identifyEndUser(input);
+      set({ user: resolved });
+    } catch (e: any) {
+      console.warn('[FeaturedDeck] Failed to identify user, storing locally:', e.message);
+      set({
+        user: {
+          id: input.externalUserId,
+          ...input,
+        },
+      });
+    }
   },
   
   setTheme: (theme) => {
@@ -132,7 +162,6 @@ export const store = create<State>((set, get) => ({
     set({ 
       visible: false, 
       viewState: { type: 'board' },
-      selectedFeature: null,
       error: null,
     });
   },
@@ -141,23 +170,15 @@ export const store = create<State>((set, get) => ({
     set({ viewState: view, error: null });
   },
   
-  openFeature: async (featureId) => {
-    set({ 
-      viewState: { type: 'feature', featureId },
-    });
-    await get().loadFeature(featureId);
-  },
-  
   openAddFeature: () => {
     set({ viewState: { type: 'add-feature' }, error: null });
   },
   
   goBack: () => {
     const { viewState } = get();
-    if (viewState.type === 'feature' || viewState.type === 'add-feature' || viewState.type === 'roadmap') {
+    if (viewState.type === 'add-feature') {
       set({ 
         viewState: { type: 'board' },
-        selectedFeature: null,
         error: null,
       });
     } else {
@@ -166,20 +187,21 @@ export const store = create<State>((set, get) => ({
   },
 
   loadFeatures: async (refresh = false) => {
-    const { filters, user } = get();
+    const { user } = get();
     
     set({ isLoading: true, error: null });
     
     try {
       const result = await fetchFeatures({
-        filters,
-        userId: user?.id,
+        endUserId: user?.id,
         page: 1,
         pageSize: 20,
       });
       
+      const merged = mergePreservingPendingVotes(result.data, get().features);
+      
       set({
-        features: result.data,
+        features: merged,
         featuresTotal: result.total,
         featuresPage: 1,
         featuresHasMore: result.hasMore,
@@ -194,7 +216,7 @@ export const store = create<State>((set, get) => ({
   },
   
   loadMoreFeatures: async () => {
-    const { filters, featuresPage, featuresHasMore, features, user } = get();
+    const { featuresPage, featuresHasMore, features, user } = get();
     
     if (!featuresHasMore) return;
     
@@ -202,8 +224,7 @@ export const store = create<State>((set, get) => ({
     
     try {
       const result = await fetchFeatures({
-        filters,
-        userId: user?.id,
+        endUserId: user?.id,
         page: nextPage,
         pageSize: 20,
       });
@@ -217,34 +238,18 @@ export const store = create<State>((set, get) => ({
     }
   },
   
-  loadFeature: async (featureId) => {
-    const { user } = get();
-    
-    try {
-      const feature = await fetchFeature(featureId, user?.id);
-      set({ selectedFeature: feature });
-      
-      const features = get().features.map(f => 
-        f.id === featureId ? feature : f
-      );
-      set({ features });
-    } catch (e: any) {
-      set({ error: e.message || 'Failed to load feature' });
-    }
-  },
-  
-  createFeature: async (title, description, type = 'feature' as const) => {
+  createFeature: async (title, description) => {
     const { user } = get();
     
     if (!user) {
-      set({ error: 'User must be set to create feedback. Call ProdFeedback.setUser() first.' });
+      set({ error: 'User must be set to create feedback. Call FeaturedDeck.setUser() first.' });
       return false;
     }
     
     set({ isLoading: true, error: null });
     
     try {
-      const newFeature = await createFeatureQuery(title, description, user, type);
+      const newFeature = await createFeatureQuery(title, description, user);
       
       const features = [newFeature, ...get().features];
       set({ 
@@ -268,7 +273,7 @@ export const store = create<State>((set, get) => ({
     const { user, features } = get();
     
     if (!user) {
-      set({ error: 'User must be set to delete a feature. Call ProdFeedback.setUser() first.' });
+      set({ error: 'User must be set to delete a feature. Call FeaturedDeck.setUser() first.' });
       return false;
     }
     
@@ -278,8 +283,6 @@ export const store = create<State>((set, get) => ({
       set({ 
         features: features.filter(f => f.id !== featureId),
         featuresTotal: get().featuresTotal - 1,
-        viewState: { type: 'board' },
-        selectedFeature: null,
       });
       
       return true;
@@ -290,37 +293,38 @@ export const store = create<State>((set, get) => ({
   },
   
   toggleUpvote: async (featureId) => {
-    const { features, selectedFeature, user } = get();
+    const { features, user } = get();
     
     if (!user) {
-      set({ error: 'User must be set to vote. Call ProdFeedback.setUser() first.' });
+      set({ error: 'User must be set to vote. Call FeaturedDeck.setUser() first.' });
       return;
     }
     
-    const feature = features.find(f => f.id === featureId) || selectedFeature;
+    const feature = features.find(f => f.id === featureId);
     if (!feature) return;
     
     const willUpvote = !feature.hasUpvoted;
     
-    const updateFeature = (f: Feature) => ({
+    const optimistic = (f: Feature) => ({
       ...f,
       hasUpvoted: willUpvote,
-      upvotes: willUpvote ? f.upvotes + 1 : f.upvotes - 1,
+      upvotesCount: willUpvote ? f.upvotesCount + 1 : f.upvotesCount - 1,
     });
     
+    pendingVotes.add(featureId);
+    
     set({
-      features: features.map(f => f.id === featureId ? updateFeature(f) : f),
-      selectedFeature: selectedFeature?.id === featureId 
-        ? updateFeature(selectedFeature) 
-        : selectedFeature,
+      features: features.map(f => f.id === featureId ? optimistic(f) : f),
     });
     
     try {
       const result = await toggleUpvoteQuery(featureId, user.id);
       
+      pendingVotes.delete(featureId);
+      
       const serverUpdate = (f: Feature) => ({
         ...f,
-        upvotes: result.upvotes,
+        upvotesCount: result.upvotesCount,
         hasUpvoted: result.hasUpvoted,
       });
       
@@ -328,42 +332,45 @@ export const store = create<State>((set, get) => ({
         features: get().features.map(f => 
           f.id === featureId ? serverUpdate(f) : f
         ),
-        selectedFeature: get().selectedFeature?.id === featureId 
-          ? serverUpdate(get().selectedFeature!) 
-          : get().selectedFeature,
       });
     } catch (e) {
+      pendingVotes.delete(featureId);
+      
       const revert = (f: Feature) => ({
         ...f,
         hasUpvoted: !willUpvote,
-        upvotes: willUpvote ? f.upvotes - 1 : f.upvotes + 1,
+        upvotesCount: willUpvote ? f.upvotesCount - 1 : f.upvotesCount + 1,
       });
       
       set({
         features: get().features.map(f => f.id === featureId ? revert(f) : f),
-        selectedFeature: get().selectedFeature?.id === featureId 
-          ? revert(get().selectedFeature!) 
-          : get().selectedFeature,
       });
     }
   },
   
-  
-  setFilters: (newFilters) => {
-    set({ 
-      filters: { ...get().filters, ...newFilters },
-    });
-    get().loadFeatures(true);
+  loadRoadmap: async () => {
+    set({ roadmapLoading: true, error: null });
+    
+    try {
+      const features = await fetchRoadmapQuery();
+      set({ roadmapFeatures: features, roadmapLoading: false });
+    } catch (e: any) {
+      set({ 
+        error: e.message || 'Failed to load roadmap',
+        roadmapLoading: false,
+      });
+    }
   },
 }));
 
 export const useStore = store;
 export const useFeedbackStore = store;
 export const useFeatures = () => store(s => s.features);
-export const useSelectedFeature = () => store(s => s.selectedFeature);
 export const useThemeStore = () => store(s => s.theme);
 export const useIsLoading = () => store(s => s.isLoading);
 export const useError = () => store(s => s.error);
 export const useVisible = () => store(s => s.visible);
 export const useViewState = () => store(s => s.viewState);
 export const useUser = () => store(s => s.user);
+export const useRoadmapFeatures = () => store(s => s.roadmapFeatures);
+export const useRoadmapLoading = () => store(s => s.roadmapLoading);

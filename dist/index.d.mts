@@ -1,57 +1,47 @@
 import React$1 from 'react';
 
-type FeedbackType = 'bug' | 'feature' | 'improvement' | 'other';
-type FeedbackStatus = 'new' | 'under_review' | 'planned' | 'in_progress' | 'completed' | 'declined';
-type FeatureStatus = FeedbackStatus;
+type FeatureStatus = 'open' | 'under_review' | 'planned' | 'in_progress' | 'completed' | 'declined';
 type FeaturePriority = 'low' | 'medium' | 'high' | 'critical';
-interface Category {
-    id: string;
-    name: string;
-    color: string;
-    icon?: string;
-}
-interface User {
-    id: string;
+type RoadmapFeatureStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled';
+type RoadmapFeatureVisibility = 'public' | 'private';
+interface UserInput {
+    externalUserId: string;
+    username?: string;
     email?: string;
-    name?: string;
-    avatar?: string;
-    metadata?: Record<string, any>;
 }
-interface Comment {
+interface User extends UserInput {
     id: string;
-    featureId: string;
-    content: string;
-    author: User;
-    createdAt: string;
-    updatedAt?: string;
-    isOfficial?: boolean;
-    parentId?: string;
-    replies?: Comment[];
 }
-interface Feedback {
+interface Feature {
     id: string;
+    projectId: string;
     title: string;
-    description: string;
-    type: FeedbackType;
-    status: FeedbackStatus;
-    priority: number;
-    upvotes: number;
+    description: string | null;
+    status: FeatureStatus;
+    priority: FeaturePriority;
+    createdByEndUserId: string | null;
+    createdAt: string;
+    updatedAt: string;
+    upvotesCount: number;
     hasUpvoted: boolean;
     author?: User;
-    createdAt: string;
-    metadata?: Record<string, any>;
 }
-interface Feature extends Feedback {
-    commentCount?: number;
-    isSubscribed?: boolean;
-    category?: Category;
-}
-interface Board {
+interface FeatureVote {
     id: string;
-    name: string;
-    description?: string;
-    features: Feature[];
-    categories: Category[];
+    featureRequestId: string;
+    endUserId: string;
+    createdAt: string;
+}
+interface RoadmapFeature {
+    id: string;
+    projectId: string;
+    title: string;
+    description: string | null;
+    status: RoadmapFeatureStatus;
+    visibility: RoadmapFeatureVisibility;
+    createdByUserId: string | null;
+    createdAt: string;
+    updatedAt: string;
 }
 interface ThemeColors {
     primary: string;
@@ -69,6 +59,7 @@ interface ThemeColors {
     warning: string;
     error: string;
     info: string;
+    statusOpen: string;
     statusUnderReview: string;
     statusPlanned: string;
     statusInProgress: string;
@@ -80,8 +71,6 @@ interface ThemeColors {
     overlay: string;
     upvote: string;
     upvoteActive: string;
-    subscribe: string;
-    subscribeActive: string;
 }
 interface ThemeSpacing {
     xs: number;
@@ -119,27 +108,9 @@ interface Theme {
     borderRadius: ThemeBorderRadius;
     isDark: boolean;
 }
-interface ProdFeedbackProviderProps {
+interface FeaturedDeckProviderProps {
     children: React.ReactNode;
     theme?: Partial<Theme>;
-}
-interface FeedbackButtonProps {
-    position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
-    offset?: {
-        x: number;
-        y: number;
-    };
-    size?: number;
-    icon?: React.ReactNode;
-    label?: string;
-    showLabel?: boolean;
-    style?: any;
-}
-interface FeatureFilters {
-    status?: FeedbackStatus[];
-    type?: FeedbackType[];
-    sortBy?: 'newest' | 'oldest' | 'most_upvotes' | 'trending';
-    searchQuery?: string;
 }
 interface ApiResponse<T> {
     data: T;
@@ -156,40 +127,25 @@ interface PaginatedResponse<T> {
 interface CreateFeatureInput {
     title: string;
     description: string;
-    categoryId?: string;
-    tags?: string[];
-}
-interface CreateCommentInput {
-    featureId: string;
-    content: string;
-    parentId?: string;
 }
 
-interface ProdFeedbackConfig {
+interface FeaturedDeckConfig {
     apiKey: string;
     theme?: Partial<Theme>;
 }
-declare class ProdFeedbackSDK {
-    init(config: ProdFeedbackConfig): Promise<void>;
+declare class FeaturedDeckSDK {
+    init(config: FeaturedDeckConfig): Promise<void>;
     isReady(): boolean;
-    open(): void;
-    openBoard(): void;
+    openFeatureBoard(): void;
     close(): void;
-    setUser(user: User | null): void;
+    setUser(user: User | null): Promise<void>;
     getUser(): User | null;
     setTheme(theme: Partial<Theme>): void;
     enableDarkMode(): void;
     enableLightMode(): void;
-    setFilters(filters: FeatureFilters): void;
-    refresh(): Promise<void>;
-    showRoadmap(): Promise<void>;
-    openFeature(featureId: string): void;
-    openAddFeature(): void;
     isVisible(): boolean;
-    upvote(featureId: string): Promise<void>;
-    deleteFeature(featureId: string): Promise<boolean>;
 }
-declare const ProdFeedback: ProdFeedbackSDK;
+declare const FeaturedDeck: FeaturedDeckSDK;
 
 declare const lightTheme: Theme;
 declare const darkTheme: Theme;
@@ -199,86 +155,23 @@ declare function getStatusColor(status: string, colors: ThemeColors): string;
 declare function getStatusLabel(status: string): string;
 declare function createThemeFromColor(primaryColor: string, isDark?: boolean): Partial<Theme>;
 
-declare function ProdFeedbackProvider({ children, theme: customTheme }: ProdFeedbackProviderProps): React$1.JSX.Element;
+declare function FeaturedDeckProvider({ children, theme: customTheme }: FeaturedDeckProviderProps): React$1.JSX.Element;
 
-declare function FeedbackButton({ position, offset, size, icon, label, showLabel, style, }: FeedbackButtonProps): React$1.JSX.Element;
-
-/**
- * Hook to get all features
- */
 declare function useFeatures(): Feature[];
-/**
- * Hook to get a specific feature by ID
- */
 declare function useFeature(featureId: string): Feature | undefined;
-/**
- * Hook to get the currently selected/viewed feature
- */
-declare function useSelectedFeature(): Feature | null;
-/**
- * Hook to get comments for the selected feature
- */
-declare function useComments(): Comment[];
-/**
- * Hook to get all categories
- */
-declare function useCategories(): Category[];
-/**
- * Hook to get current filters
- */
-declare function useFilters(): FeatureFilters;
-/**
- * Hook to get loading state
- */
 declare function useIsLoading(): boolean;
-/**
- * Hook to get error state
- */
 declare function useError(): string | null;
-/**
- * Hook to get visibility state
- */
 declare function useVisible(): boolean;
-/**
- * Hook to get the current user
- */
 declare function useUser(): User | null;
-/**
- * Hook to check if current user is the author of a feature
- */
-declare function useIsFeatureAuthor(featureId: string): boolean;
-/**
- * Hook to get SDK actions
- */
-declare function useProdFeedbackActions(): {
-    open: () => void;
-    close: () => void;
-    setFilters: (filters: Partial<FeatureFilters>) => void;
-    refresh: () => Promise<void>;
-    upvote: (featureId: string) => Promise<void>;
-    deleteFeature: (featureId: string) => Promise<boolean>;
-};
-/**
- * Hook for upvoting a feature
- */
 declare function useUpvote(featureId: string): {
-    upvotes: number;
+    upvotesCount: number;
     hasUpvoted: boolean;
     toggle: () => Promise<void>;
 };
-/**
- * Hook for subscribing to a feature
- */
-declare function useSubscription(featureId: string): {
-    isSubscribed: boolean;
-    toggle: () => void;
-};
-/**
- * Hook for deleting a feature (only for authors)
- */
-declare function useDeleteFeature(featureId: string): {
-    canDelete: boolean;
-    deleteFeature: () => Promise<boolean>;
+declare function useRoadmap(): {
+    features: RoadmapFeature[];
+    loading: boolean;
+    refresh: () => Promise<void>;
 };
 
-export { type ApiResponse, type Board, type Category, type Comment, type CreateCommentInput, type CreateFeatureInput, type Feature, type FeatureFilters, type FeaturePriority, type FeatureStatus, FeedbackButton, type FeedbackButtonProps, type PaginatedResponse, ProdFeedback, type ProdFeedbackConfig, ProdFeedbackProvider, type ProdFeedbackProviderProps, type Theme, type ThemeBorderRadius, type ThemeColors, type ThemeSpacing, type ThemeTypography, type User, createThemeFromColor, darkTheme, getStatusColor, getStatusLabel, lightTheme, mergeTheme, useCategories, useComments, useDeleteFeature, useError, useFeature, useFeatures, useFilters, useIsFeatureAuthor, useIsLoading, useProdFeedbackActions, useSelectedFeature, useSubscription, useTheme, useUpvote, useUser, useVisible };
+export { type ApiResponse, type CreateFeatureInput, type Feature, type FeaturePriority, type FeatureStatus, type FeatureVote, FeaturedDeck, type FeaturedDeckConfig, FeaturedDeckProvider, type FeaturedDeckProviderProps, type PaginatedResponse, type RoadmapFeature, type RoadmapFeatureStatus, type RoadmapFeatureVisibility, type Theme, type ThemeBorderRadius, type ThemeColors, type ThemeSpacing, type ThemeTypography, type User, type UserInput, createThemeFromColor, darkTheme, getStatusColor, getStatusLabel, lightTheme, mergeTheme, useError, useFeature, useFeatures, useIsLoading, useRoadmap, useTheme, useUpvote, useUser, useVisible };
