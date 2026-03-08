@@ -1,6 +1,6 @@
 {
   "name": "@featuredeck/react-native",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Beautiful in-app feedback SDK for React Native - feature requests, upvotes, comments & roadmap",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -12,7 +12,9 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
   "license": "MIT",
   "repository": {
@@ -29,17 +31,14 @@
     "product-feedback",
     "expo"
   ],
-
   "peerDependencies": {
     "react": ">=17.0.0",
     "react-native": ">=0.68.0",
     "zustand": ">=4.0.0"
   },
-
   "dependencies": {
     "zustand": "^4.5.0"
   },
-
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/react": "^19.2.7",
@@ -48,7 +47,6 @@
     "react": "^18.2.0",
     "react-native": "^0.73.0"
   },
-
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
