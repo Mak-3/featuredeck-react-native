@@ -1162,10 +1162,10 @@ var styles2 = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 20
+    paddingBottom: 200
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 29,
     fontWeight: "700"
   },
   tabRow: {
