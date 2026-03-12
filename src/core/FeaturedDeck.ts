@@ -1,5 +1,5 @@
 import { store } from '../state/store';
-import { User, Theme } from '../types';
+import { User, Theme, UserInput } from '../types';
 
 export interface FeaturedDeckConfig {
   apiKey: string;
@@ -35,7 +35,7 @@ class FeaturedDeckSDK {
     store.getState().close();
   }
 
-  async setUser(user: User | null) {
+  async setUser(user: UserInput | null) {
     await store.getState().setUser(user);
   }
 

@@ -344,10 +344,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: 200,
+    paddingBottom: 20,
   },
   headerTitle: {
-    fontSize: 29,
+    fontSize: 22,
     fontWeight: '700',
   },
   tabRow: {
