@@ -6,9 +6,9 @@ import { jsxs, jsx } from 'react/jsx-runtime';
 // src/state/store.ts
 var defaultColors = {
   // Base - Deep indigo primary
-  primary: "#6366F1",
-  primaryLight: "#818CF8",
-  primaryDark: "#4F46E5",
+  primary: "#E85D04",
+  primaryLight: "#F07A33",
+  primaryDark: "#C84E03",
   // Backgrounds
   background: "#FAFBFC",
   backgroundSecondary: "#F1F5F9",
@@ -38,13 +38,13 @@ var defaultColors = {
   overlay: "rgba(15, 23, 42, 0.5)",
   // Interactive
   upvote: "#94A3B8",
-  upvoteActive: "#6366F1"
+  upvoteActive: "#E85D04"
 };
 var darkColors = {
   // Base
-  primary: "#818CF8",
-  primaryLight: "#A5B4FC",
-  primaryDark: "#6366F1",
+  primary: "#F07A33",
+  primaryLight: "#FF9A57",
+  primaryDark: "#E85D04",
   // Backgrounds
   background: "#0F172A",
   backgroundSecondary: "#1E293B",
@@ -74,7 +74,7 @@ var darkColors = {
   overlay: "rgba(0, 0, 0, 0.7)",
   // Interactive
   upvote: "#64748B",
-  upvoteActive: "#818CF8"
+  upvoteActive: "#F07A33"
 };
 var defaultSpacing = {
   xs: 4,
@@ -175,9 +175,14 @@ function setApiKey(key) {
 }
 function getApiKey() {
   if (!apiKey) {
-    throw new Error("[FeaturedDeck] API key not set. Call FeaturedDeck.init() first.");
+    throw new Error("[FeatureDeck] API key not set. Call FeatureDeck.init() first.");
   }
   return apiKey;
+}
+var NETWORK_ERROR = "NETWORK_ERROR";
+function isNetworkError(error) {
+  const msg = ((error == null ? void 0 : error.message) || "").toLowerCase();
+  return msg.includes("network request failed") || msg.includes("failed to fetch") || msg.includes("networkerror") || msg.includes("timeout") || msg.includes("aborted") || msg.includes("internet") || msg.includes("not connected");
 }
 async function request(endpoint, options = {}) {
   const key = getApiKey();
@@ -204,10 +209,17 @@ async function request(endpoint, options = {}) {
       success: true
     };
   } catch (error) {
+    if (isNetworkError(error)) {
+      return {
+        data: null,
+        success: false,
+        error: NETWORK_ERROR
+      };
+    }
     return {
       data: null,
       success: false,
-      error: error.message || "Network error"
+      error: error.message || "Something went wrong"
     };
   }
 }
@@ -287,12 +299,15 @@ async function fetchRoadmap() {
 }
 
 // src/state/store.ts
+var VOTE_DEBOUNCE_MS = 500;
 var pendingVotes = /* @__PURE__ */ new Set();
+var voteTimers = /* @__PURE__ */ new Map();
+var voteBaseState = /* @__PURE__ */ new Map();
 function mergePreservingPendingVotes(incoming, current) {
-  if (pendingVotes.size === 0) return incoming;
+  if (pendingVotes.size === 0 && voteTimers.size === 0) return incoming;
   const currentMap = new Map(current.map((f) => [f.id, f]));
   return incoming.map((f) => {
-    if (pendingVotes.has(f.id)) {
+    if (pendingVotes.has(f.id) || voteTimers.has(f.id)) {
       const local = currentMap.get(f.id);
       if (local) {
         return { ...f, upvotesCount: local.upvotesCount, hasUpvoted: local.hasUpvoted };
@@ -327,9 +342,9 @@ var store = create((set, get2) => ({
         theme: mergedTheme,
         ready: true
       });
-      console.log("[FeaturedDeck] SDK initialized");
+      console.log("[FeatureDeck] SDK initialized");
     } catch (error) {
-      console.error("[FeaturedDeck] Failed to initialize:", error);
+      console.error("[FeatureDeck] Failed to initialize:", error);
       set({ error: error.message || "Failed to initialize SDK" });
     }
   },
@@ -342,7 +357,7 @@ var store = create((set, get2) => ({
       const resolved = await identifyEndUser(input);
       set({ user: resolved });
     } catch (e) {
-      console.warn("[FeaturedDeck] Failed to identify user, storing locally:", e.message);
+      console.warn("[FeatureDeck] Failed to identify user, storing locally:", e.message);
       set({
         user: {
           id: input.externalUserId,
@@ -428,12 +443,13 @@ var store = create((set, get2) => ({
         featuresHasMore: result.hasMore
       });
     } catch (e) {
+      console.warn("[FeatureDeck] Failed to load more features:", e.message);
     }
   },
   createFeature: async (title, description) => {
     const { user } = get2();
     if (!user) {
-      set({ error: "User must be set to create feedback. Call FeaturedDeck.setUser() first." });
+      set({ error: "User must be set to create feedback. Call FeatureDeck.setUser() first." });
       return false;
     }
     set({ isLoading: true, error: null });
@@ -456,65 +472,83 @@ var store = create((set, get2) => ({
     }
   },
   deleteFeature: async (featureId) => {
-    const { user, features } = get2();
+    const { user, features, featuresTotal } = get2();
     if (!user) {
-      set({ error: "User must be set to delete a feature. Call FeaturedDeck.setUser() first." });
+      set({ error: "User must be set to delete a feature. Call FeatureDeck.setUser() first." });
       return false;
     }
+    const featureIndex = features.findIndex((f) => f.id === featureId);
+    const deletedFeature = features[featureIndex];
+    set({
+      features: features.filter((f) => f.id !== featureId),
+      featuresTotal: featuresTotal - 1
+    });
     try {
       await deleteFeature(featureId, user.id);
-      set({
-        features: features.filter((f) => f.id !== featureId),
-        featuresTotal: get2().featuresTotal - 1
-      });
       return true;
     } catch (e) {
-      set({ error: e.message || "Failed to delete feature" });
+      const current = get2().features;
+      const restored = [...current];
+      restored.splice(featureIndex, 0, deletedFeature);
+      set({
+        features: restored,
+        featuresTotal: get2().featuresTotal + 1,
+        error: e.message || "Failed to delete feature"
+      });
       return false;
     }
   },
   toggleUpvote: async (featureId) => {
-    const { features, user } = get2();
+    const { user } = get2();
     if (!user) {
-      set({ error: "User must be set to vote. Call FeaturedDeck.setUser() first." });
+      set({ error: "User must be set to vote. Call FeatureDeck.setUser() first." });
       return;
     }
-    const feature = features.find((f) => f.id === featureId);
+    if (pendingVotes.has(featureId)) return;
+    const feature = get2().features.find((f) => f.id === featureId);
     if (!feature) return;
-    const willUpvote = !feature.hasUpvoted;
-    const optimistic = (f) => ({
-      ...f,
-      hasUpvoted: willUpvote,
-      upvotesCount: willUpvote ? f.upvotesCount + 1 : f.upvotesCount - 1
-    });
-    pendingVotes.add(featureId);
-    set({
-      features: features.map((f) => f.id === featureId ? optimistic(f) : f)
-    });
-    try {
-      const result = await toggleUpvote(featureId, user.id);
-      pendingVotes.delete(featureId);
-      const serverUpdate = (f) => ({
-        ...f,
-        upvotesCount: result.upvotesCount,
-        hasUpvoted: result.hasUpvoted
-      });
-      set({
-        features: get2().features.map(
-          (f) => f.id === featureId ? serverUpdate(f) : f
-        )
-      });
-    } catch (e) {
-      pendingVotes.delete(featureId);
-      const revert = (f) => ({
-        ...f,
-        hasUpvoted: !willUpvote,
-        upvotesCount: willUpvote ? f.upvotesCount - 1 : f.upvotesCount + 1
-      });
-      set({
-        features: get2().features.map((f) => f.id === featureId ? revert(f) : f)
+    if (!voteBaseState.has(featureId)) {
+      voteBaseState.set(featureId, {
+        hasUpvoted: feature.hasUpvoted,
+        upvotesCount: feature.upvotesCount
       });
     }
+    const willUpvote = !feature.hasUpvoted;
+    set({
+      features: get2().features.map((f) => f.id === featureId ? {
+        ...f,
+        hasUpvoted: willUpvote,
+        upvotesCount: Math.max(0, willUpvote ? f.upvotesCount + 1 : f.upvotesCount - 1)
+      } : f)
+    });
+    const existingTimer = voteTimers.get(featureId);
+    if (existingTimer) clearTimeout(existingTimer);
+    const timer = setTimeout(async () => {
+      voteTimers.delete(featureId);
+      const baseState = voteBaseState.get(featureId);
+      voteBaseState.delete(featureId);
+      if (!baseState) return;
+      const current = get2().features.find((f) => f.id === featureId);
+      if (!current || current.hasUpvoted === baseState.hasUpvoted) return;
+      pendingVotes.add(featureId);
+      try {
+        const result = await toggleUpvote(featureId, user.id);
+        pendingVotes.delete(featureId);
+        set({
+          features: get2().features.map(
+            (f) => f.id === featureId ? { ...f, upvotesCount: result.upvotesCount, hasUpvoted: result.hasUpvoted } : f
+          )
+        });
+      } catch (e) {
+        pendingVotes.delete(featureId);
+        set({
+          features: get2().features.map(
+            (f) => f.id === featureId ? { ...f, hasUpvoted: baseState.hasUpvoted, upvotesCount: baseState.upvotesCount } : f
+          )
+        });
+      }
+    }, VOTE_DEBOUNCE_MS);
+    voteTimers.set(featureId, timer);
   },
   loadRoadmap: async () => {
     set({ roadmapLoading: true, error: null });
@@ -540,11 +574,11 @@ var useUser = () => store((s) => s.user);
 var useRoadmapFeatures = () => store((s) => s.roadmapFeatures);
 var useRoadmapLoading = () => store((s) => s.roadmapLoading);
 
-// src/core/FeaturedDeck.ts
-var FeaturedDeckSDK = class {
+// src/core/FeatureDeck.ts
+var FeatureDeckSDK = class {
   async init(config) {
     if (!config.apiKey) {
-      console.error("[FeaturedDeck] API key is required");
+      console.error("[FeatureDeck] API key is required");
       return;
     }
     await store.getState().init({
@@ -557,7 +591,7 @@ var FeaturedDeckSDK = class {
   }
   openFeatureBoard() {
     if (!this.isReady()) {
-      console.warn("[FeaturedDeck] SDK not initialized. Call init() first.");
+      console.warn("[FeatureDeck] SDK not initialized. Call init() first.");
       return;
     }
     store.getState().open();
@@ -584,7 +618,7 @@ var FeaturedDeckSDK = class {
     return store.getState().visible;
   }
 };
-var FeaturedDeck = new FeaturedDeckSDK();
+var FeatureDeck = new FeatureDeckSDK();
 function StatusBadge({ status, size = "medium" }) {
   const theme = useTheme();
   const color = getStatusColor(status, theme.colors);
@@ -925,9 +959,26 @@ function FeatureBoard() {
   const handleClose = () => {
     store.getState().close();
   };
+  const isOffline = error === NETWORK_ERROR;
+  const renderOfflineState = () => /* @__PURE__ */ jsxs(View, { style: styles2.emptyContainer, children: [
+    /* @__PURE__ */ jsx(Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F4E1}" }),
+    /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No internet connection" }),
+    /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20, paddingHorizontal: 40 }, children: "Check your connection and try again. You can pull down to refresh once you're back online." }),
+    /* @__PURE__ */ jsx(
+      TouchableOpacity,
+      {
+        style: { backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 },
+        onPress: handleRefresh,
+        children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textInverse, fontWeight: "600" }, children: "Retry" })
+      }
+    )
+  ] });
   const renderFeaturesEmpty = () => {
     if (isLoading) {
       return /* @__PURE__ */ jsx(View, { style: styles2.emptyContainer, children: /* @__PURE__ */ jsx(ActivityIndicator, { size: "large", color: theme.colors.primary }) });
+    }
+    if (isOffline) {
+      return renderOfflineState();
     }
     if (error) {
       return /* @__PURE__ */ jsxs(View, { style: styles2.emptyContainer, children: [
@@ -957,6 +1008,24 @@ function FeatureBoard() {
   const renderRoadmapEmpty = () => {
     if (roadmapLoading) {
       return /* @__PURE__ */ jsx(View, { style: styles2.emptyContainer, children: /* @__PURE__ */ jsx(ActivityIndicator, { size: "large", color: theme.colors.primary }) });
+    }
+    if (isOffline) {
+      return renderOfflineState();
+    }
+    if (error) {
+      return /* @__PURE__ */ jsxs(View, { style: styles2.emptyContainer, children: [
+        /* @__PURE__ */ jsx(Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F615}" }),
+        /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "Something went wrong" }),
+        /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20 }, children: error }),
+        /* @__PURE__ */ jsx(
+          TouchableOpacity,
+          {
+            style: { backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 },
+            onPress: handleRefresh,
+            children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textInverse, fontWeight: "600" }, children: "Try Again" })
+          }
+        )
+      ] });
     }
     return /* @__PURE__ */ jsxs(View, { style: styles2.emptyContainer, children: [
       /* @__PURE__ */ jsx(Text, { style: { fontSize: 48, marginBottom: 12 }, children: "\u{1F5FA}\uFE0F" }),
@@ -1145,7 +1214,7 @@ function FeatureBoard() {
               ]
             }
           ),
-          /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textMuted, fontSize: 11, textAlign: "center", marginTop: activeTab === "features" ? 12 : 0, letterSpacing: 0.3 }, children: "Powered by FeaturedDeck" })
+          /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.textMuted, fontSize: 11, textAlign: "center", marginTop: activeTab === "features" ? 12 : 0, letterSpacing: 0.3 }, children: "Powered by FeatureDeck" })
         ]
       }
     )
@@ -1162,10 +1231,10 @@ var styles2 = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 200
+    paddingBottom: 20
   },
   headerTitle: {
-    fontSize: 29,
+    fontSize: 22,
     fontWeight: "700"
   },
   tabRow: {
@@ -1211,7 +1280,6 @@ var styles2 = StyleSheet.create({
 });
 function Header({ title, showBack = false, rightAction }) {
   const theme = useTheme();
-  useViewState();
   const styles3 = useMemo(() => StyleSheet.create({
     container: {
       flexDirection: "row",
@@ -1385,19 +1453,28 @@ function AddFeature() {
             showsVerticalScrollIndicator: false,
             keyboardShouldPersistTaps: "handled",
             children: [
-              error && /* @__PURE__ */ jsx(
+              error && /* @__PURE__ */ jsxs(
                 View,
                 {
                   style: [
                     styles3.errorBanner,
                     {
-                      backgroundColor: theme.colors.error + "15",
+                      backgroundColor: (error === NETWORK_ERROR ? theme.colors.warning : theme.colors.error) + "15",
                       borderRadius: theme.borderRadius.md,
                       padding: theme.spacing.md,
-                      marginBottom: theme.spacing.md
+                      marginBottom: theme.spacing.md,
+                      flexDirection: "row",
+                      alignItems: "center"
                     }
                   ],
-                  children: /* @__PURE__ */ jsx(Text, { style: { color: theme.colors.error, fontSize: theme.typography.sizeSm }, children: error })
+                  children: [
+                    /* @__PURE__ */ jsx(Text, { style: { fontSize: 16, marginRight: 8 }, children: error === NETWORK_ERROR ? "\u{1F4E1}" : "\u26A0\uFE0F" }),
+                    /* @__PURE__ */ jsx(Text, { style: {
+                      color: error === NETWORK_ERROR ? theme.colors.warning : theme.colors.error,
+                      fontSize: theme.typography.sizeSm,
+                      flex: 1
+                    }, children: error === NETWORK_ERROR ? "No internet connection. Please check your network and try again." : error })
+                  ]
                 }
               ),
               /* @__PURE__ */ jsxs(View, { style: styles3.inputGroup, children: [
@@ -1663,7 +1740,7 @@ function FeedbackModal() {
     }
   );
 }
-function FeaturedDeckProvider({
+function FeatureDeckProvider({
   children,
   theme: customTheme
 }) {
@@ -1717,6 +1794,6 @@ function useRoadmap() {
   };
 }
 
-export { FeaturedDeck, FeaturedDeckProvider, createThemeFromColor, darkTheme, getStatusColor, getStatusLabel, lightTheme, mergeTheme, useError2 as useError, useFeature, useFeatures2 as useFeatures, useIsLoading2 as useIsLoading, useRoadmap, useTheme, useUpvote, useUser2 as useUser, useVisible2 as useVisible };
+export { FeatureDeck, FeatureDeckProvider, createThemeFromColor, darkTheme, getStatusColor, getStatusLabel, lightTheme, mergeTheme, useError2 as useError, useFeature, useFeatures2 as useFeatures, useIsLoading2 as useIsLoading, useRoadmap, useTheme, useUpvote, useUser2 as useUser, useVisible2 as useVisible };
 //# sourceMappingURL=index.mjs.map
 //# sourceMappingURL=index.mjs.map

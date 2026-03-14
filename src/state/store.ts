@@ -118,9 +118,9 @@ export const store = create<State>((set, get) => ({
         ready: true,
       });
       
-      console.log('[FeaturedDeck] SDK initialized');
+      console.log('[FeatureDeck] SDK initialized');
     } catch (error: any) {
-      console.error('[FeaturedDeck] Failed to initialize:', error);
+      console.error('[FeatureDeck] Failed to initialize:', error);
       set({ error: error.message || 'Failed to initialize SDK' });
     }
   },
@@ -135,7 +135,7 @@ export const store = create<State>((set, get) => ({
       const resolved = await identifyEndUser(input);
       set({ user: resolved });
     } catch (e: any) {
-      console.warn('[FeaturedDeck] Failed to identify user, storing locally:', e.message);
+      console.warn('[FeatureDeck] Failed to identify user, storing locally:', e.message);
       set({
         user: {
           id: input.externalUserId,
@@ -238,7 +238,7 @@ export const store = create<State>((set, get) => ({
         featuresHasMore: result.hasMore,
       });
     } catch (e: any) {
-      console.warn('[FeaturedDeck] Failed to load more features:', e.message);
+      console.warn('[FeatureDeck] Failed to load more features:', e.message);
     }
   },
   
@@ -246,7 +246,7 @@ export const store = create<State>((set, get) => ({
     const { user } = get();
     
     if (!user) {
-      set({ error: 'User must be set to create feedback. Call FeaturedDeck.setUser() first.' });
+      set({ error: 'User must be set to create feedback. Call FeatureDeck.setUser() first.' });
       return false;
     }
     
@@ -277,7 +277,7 @@ export const store = create<State>((set, get) => ({
     const { user, features, featuresTotal } = get();
     
     if (!user) {
-      set({ error: 'User must be set to delete a feature. Call FeaturedDeck.setUser() first.' });
+      set({ error: 'User must be set to delete a feature. Call FeatureDeck.setUser() first.' });
       return false;
     }
     
@@ -310,7 +310,7 @@ export const store = create<State>((set, get) => ({
     const { user } = get();
     
     if (!user) {
-      set({ error: 'User must be set to vote. Call FeaturedDeck.setUser() first.' });
+      set({ error: 'User must be set to vote. Call FeatureDeck.setUser() first.' });
       return;
     }
     

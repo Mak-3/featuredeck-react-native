@@ -1,5 +1,5 @@
 // ============================================
-// FeaturedDeck SDK Types
+// FeatureDeck SDK Types
 // ============================================
 
 export type FeatureStatus =
@@ -151,7 +151,7 @@ export interface Theme {
 }
 
 // Provider props
-export interface FeaturedDeckProviderProps {
+export interface FeatureDeckProviderProps {
   children: React.ReactNode;
   theme?: Partial<Theme>;
 }

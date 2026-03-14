@@ -375,7 +375,7 @@ export function FeatureBoard() {
           </TouchableOpacity>
         )}
         <Text style={{ color: theme.colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: activeTab === 'features' ? 12 : 0, letterSpacing: 0.3 }}>
-          Powered by FeaturedDeck
+          Powered by FeatureDeck
         </Text>
       </View>
     </View>

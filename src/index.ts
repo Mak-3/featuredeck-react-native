@@ -1,11 +1,11 @@
 // ============================================
-// FeaturedDeck React Native SDK
+// FeatureDeck React Native SDK
 // ============================================
 
-export { FeaturedDeck } from './core/FeaturedDeck';
-export type { FeaturedDeckConfig } from './core/FeaturedDeck';
+export { FeatureDeck } from './core/FeatureDeck';
+export type { FeatureDeckConfig } from './core/FeatureDeck';
 
-export { FeaturedDeckProvider } from './provider/FeaturedDeckProvider';
+export { FeatureDeckProvider } from './provider/FeatureDeckProvider';
 
 export { 
   lightTheme, 
@@ -48,7 +48,7 @@ export type {
   ThemeTypography,
   ThemeBorderRadius,
 
-  FeaturedDeckProviderProps,
+  FeatureDeckProviderProps,
 
   ApiResponse,
   PaginatedResponse,

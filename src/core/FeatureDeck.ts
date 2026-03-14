@@ -1,15 +1,15 @@
 import { store } from '../state/store';
 import { User, Theme, UserInput } from '../types';
 
-export interface FeaturedDeckConfig {
+export interface FeatureDeckConfig {
   apiKey: string;
   theme?: Partial<Theme>;
 }
 
-class FeaturedDeckSDK {
-  async init(config: FeaturedDeckConfig) {
+class FeatureDeckSDK {
+  async init(config: FeatureDeckConfig) {
     if (!config.apiKey) {
-      console.error('[FeaturedDeck] API key is required');
+      console.error('[FeatureDeck] API key is required');
       return;
     }
 
@@ -25,7 +25,7 @@ class FeaturedDeckSDK {
 
   openFeatureBoard() {
     if (!this.isReady()) {
-      console.warn('[FeaturedDeck] SDK not initialized. Call init() first.');
+      console.warn('[FeatureDeck] SDK not initialized. Call init() first.');
       return;
     }
     store.getState().open();
@@ -60,6 +60,6 @@ class FeaturedDeckSDK {
   }
 }
 
-export const FeaturedDeck = new FeaturedDeckSDK();
+export const FeatureDeck = new FeatureDeckSDK();
 
-export type { FeaturedDeckSDK };
+export type { FeatureDeckSDK };

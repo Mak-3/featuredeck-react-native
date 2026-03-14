@@ -108,7 +108,7 @@ interface Theme {
     borderRadius: ThemeBorderRadius;
     isDark: boolean;
 }
-interface FeaturedDeckProviderProps {
+interface FeatureDeckProviderProps {
     children: React.ReactNode;
     theme?: Partial<Theme>;
 }
@@ -129,23 +129,23 @@ interface CreateFeatureInput {
     description: string;
 }
 
-interface FeaturedDeckConfig {
+interface FeatureDeckConfig {
     apiKey: string;
     theme?: Partial<Theme>;
 }
-declare class FeaturedDeckSDK {
-    init(config: FeaturedDeckConfig): Promise<void>;
+declare class FeatureDeckSDK {
+    init(config: FeatureDeckConfig): Promise<void>;
     isReady(): boolean;
     openFeatureBoard(): void;
     close(): void;
-    setUser(user: User | null): Promise<void>;
+    setUser(user: UserInput | null): Promise<void>;
     getUser(): User | null;
     setTheme(theme: Partial<Theme>): void;
     enableDarkMode(): void;
     enableLightMode(): void;
     isVisible(): boolean;
 }
-declare const FeaturedDeck: FeaturedDeckSDK;
+declare const FeatureDeck: FeatureDeckSDK;
 
 declare const lightTheme: Theme;
 declare const darkTheme: Theme;
@@ -155,7 +155,7 @@ declare function getStatusColor(status: string, colors: ThemeColors): string;
 declare function getStatusLabel(status: string): string;
 declare function createThemeFromColor(primaryColor: string, isDark?: boolean): Partial<Theme>;
 
-declare function FeaturedDeckProvider({ children, theme: customTheme }: FeaturedDeckProviderProps): React$1.JSX.Element;
+declare function FeatureDeckProvider({ children, theme: customTheme }: FeatureDeckProviderProps): React$1.JSX.Element;
 
 declare function useFeatures(): Feature[];
 declare function useFeature(featureId: string): Feature | undefined;
@@ -174,4 +174,4 @@ declare function useRoadmap(): {
     refresh: () => Promise<void>;
 };
 
-export { type ApiResponse, type CreateFeatureInput, type Feature, type FeaturePriority, type FeatureStatus, type FeatureVote, FeaturedDeck, type FeaturedDeckConfig, FeaturedDeckProvider, type FeaturedDeckProviderProps, type PaginatedResponse, type RoadmapFeature, type RoadmapFeatureStatus, type RoadmapFeatureVisibility, type Theme, type ThemeBorderRadius, type ThemeColors, type ThemeSpacing, type ThemeTypography, type User, type UserInput, createThemeFromColor, darkTheme, getStatusColor, getStatusLabel, lightTheme, mergeTheme, useError, useFeature, useFeatures, useIsLoading, useRoadmap, useTheme, useUpvote, useUser, useVisible };
+export { type ApiResponse, type CreateFeatureInput, type Feature, FeatureDeck, type FeatureDeckConfig, FeatureDeckProvider, type FeatureDeckProviderProps, type FeaturePriority, type FeatureStatus, type FeatureVote, type PaginatedResponse, type RoadmapFeature, type RoadmapFeatureStatus, type RoadmapFeatureVisibility, type Theme, type ThemeBorderRadius, type ThemeColors, type ThemeSpacing, type ThemeTypography, type User, type UserInput, createThemeFromColor, darkTheme, getStatusColor, getStatusLabel, lightTheme, mergeTheme, useError, useFeature, useFeatures, useIsLoading, useRoadmap, useTheme, useUpvote, useUser, useVisible };

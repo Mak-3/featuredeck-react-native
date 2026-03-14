@@ -2,12 +2,12 @@ import React, { useEffect } from 'react';
 import { store, useThemeStore } from '../state/store';
 import { ThemeProvider } from '../theme';
 import { FeedbackModal } from '../ui/FeedbackModal';
-import { FeaturedDeckProviderProps } from '../types';
+import { FeatureDeckProviderProps } from '../types';
 
-export function FeaturedDeckProvider({ 
+export function FeatureDeckProvider({ 
   children, 
   theme: customTheme 
-}: FeaturedDeckProviderProps) {
+}: FeatureDeckProviderProps) {
   const storeTheme = useThemeStore();
 
   useEffect(() => {

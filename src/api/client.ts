@@ -8,7 +8,7 @@ export function setApiKey(key: string) {
 
 export function getApiKey(): string {
   if (!apiKey) {
-    throw new Error('[FeaturedDeck] API key not set. Call FeaturedDeck.init() first.');
+    throw new Error('[FeatureDeck] API key not set. Call FeatureDeck.init() first.');
   }
   return apiKey;
 }
