@@ -1,5 +1,5 @@
 import { store, useUser as useUserStore } from '../state/store';
-import { Feature, RoadmapFeature } from '../types';
+import { Feature } from '../types';
 
 export { useTheme } from '../theme';
 

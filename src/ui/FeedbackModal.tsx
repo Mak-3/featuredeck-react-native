@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Modal, View, StyleSheet, StatusBar } from 'react-native';
+import React from 'react';
+import { Modal, View, StatusBar } from 'react-native';
 import { store, useViewState, useThemeStore, useVisible } from '../state/store';
 import { ThemeProvider } from '../theme';
 import { FeatureBoard } from './FeatureBoard';

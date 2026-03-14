@@ -7,9 +7,9 @@ import { Theme, ThemeColors, ThemeSpacing, ThemeTypography, ThemeBorderRadius } 
 
 const defaultColors: ThemeColors = {
   // Base - Deep indigo primary
-  primary: '#6366F1',
-  primaryLight: '#818CF8',
-  primaryDark: '#4F46E5',
+  primary: '#E85D04',
+  primaryLight: '#F07A33',
+  primaryDark: '#C84E03',
   
   // Backgrounds
   background: '#FAFBFC',
@@ -45,14 +45,14 @@ const defaultColors: ThemeColors = {
   
   // Interactive
   upvote: '#94A3B8',
-  upvoteActive: '#6366F1',
+  upvoteActive: '#E85D04',
 };
 
 const darkColors: ThemeColors = {
   // Base
-  primary: '#818CF8',
-  primaryLight: '#A5B4FC',
-  primaryDark: '#6366F1',
+  primary: '#F07A33',
+  primaryLight: '#FF9A57',
+  primaryDark: '#E85D04',
   
   // Backgrounds
   background: '#0F172A',
@@ -88,7 +88,7 @@ const darkColors: ThemeColors = {
   
   // Interactive
   upvote: '#64748B',
-  upvoteActive: '#818CF8',
+  upvoteActive: '#F07A33',
 };
 
 const defaultSpacing: ThemeSpacing = {

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { store, useError, useFeatures, useIsLoading, useRoadmapFeatures, useRoadmapLoading, useStore } from '../state/store';
 import { useTheme } from '../theme';
+import { NETWORK_ERROR } from '../api/client';
 import { RoadmapFeatureStatus } from '../types';
 import { FeatureCard } from './components/FeatureCard';
 
@@ -73,6 +74,26 @@ export function FeatureBoard() {
     store.getState().close();
   };
 
+  const isOffline = error === NETWORK_ERROR;
+
+  const renderOfflineState = () => (
+    <View style={styles.emptyContainer}>
+      <Text style={{ fontSize: 48, marginBottom: 16 }}>📡</Text>
+      <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
+        No internet connection
+      </Text>
+      <Text style={{ color: theme.colors.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 20, paddingHorizontal: 40 }}>
+        Check your connection and try again. You can pull down to refresh once you're back online.
+      </Text>
+      <TouchableOpacity
+        style={{ backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
+        onPress={handleRefresh}
+      >
+        <Text style={{ color: theme.colors.textInverse, fontWeight: '600' }}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderFeaturesEmpty = () => {
     if (isLoading) {
       return (
@@ -80,6 +101,10 @@ export function FeatureBoard() {
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       );
+    }
+
+    if (isOffline) {
+      return renderOfflineState();
     }
 
     if (error) {
@@ -129,6 +154,30 @@ export function FeatureBoard() {
       return (
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      );
+    }
+
+    if (isOffline) {
+      return renderOfflineState();
+    }
+
+    if (error) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>😕</Text>
+          <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
+            Something went wrong
+          </Text>
+          <Text style={{ color: theme.colors.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 20 }}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
+            onPress={handleRefresh}
+          >
+            <Text style={{ color: theme.colors.textInverse, fontWeight: '600' }}>Try Again</Text>
+          </TouchableOpacity>
         </View>
       );
     }

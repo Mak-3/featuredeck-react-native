@@ -4,12 +4,14 @@ export {
   del,
   setApiKey,
   getApiKey,
+  NETWORK_ERROR,
   type ApiResponse,
 } from './client';
 
 export {
   identifyEndUser,
   fetchFeatures,
+  fetchFeature,
   createFeature,
   deleteFeature,
   toggleUpvote,

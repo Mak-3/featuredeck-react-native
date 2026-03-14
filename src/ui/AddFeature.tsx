@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme';
 import { store, useIsLoading, useError } from '../state/store';
+import { NETWORK_ERROR } from '../api/client';
 import { Header } from './components/Header';
 
 const MAX_TITLE_LENGTH = 100;
@@ -106,15 +107,26 @@ export function AddFeature() {
               style={[
                 styles.errorBanner,
                 {
-                  backgroundColor: theme.colors.error + '15',
+                  backgroundColor: (error === NETWORK_ERROR ? theme.colors.warning : theme.colors.error) + '15',
                   borderRadius: theme.borderRadius.md,
                   padding: theme.spacing.md,
                   marginBottom: theme.spacing.md,
+                  flexDirection: 'row',
+                  alignItems: 'center',
                 },
               ]}
             >
-              <Text style={{ color: theme.colors.error, fontSize: theme.typography.sizeSm }}>
-                {error}
+              <Text style={{ fontSize: 16, marginRight: 8 }}>
+                {error === NETWORK_ERROR ? '📡' : '⚠️'}
+              </Text>
+              <Text style={{
+                color: error === NETWORK_ERROR ? theme.colors.warning : theme.colors.error,
+                fontSize: theme.typography.sizeSm,
+                flex: 1,
+              }}>
+                {error === NETWORK_ERROR
+                  ? 'No internet connection. Please check your network and try again.'
+                  : error}
               </Text>
             </View>
           )}

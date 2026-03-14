@@ -15,20 +15,23 @@ import {
   toggleUpvote as toggleUpvoteQuery,
   fetchRoadmap as fetchRoadmapQuery,
 } from '../api';
-import { setApiKey } from '../api';
+import { setApiKey, NETWORK_ERROR } from '../api';
 
 type ViewState = 
   | { type: 'board' }
   | { type: 'add-feature' };
 
+const VOTE_DEBOUNCE_MS = 500;
 const pendingVotes = new Set<string>();
+const voteTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const voteBaseState = new Map<string, { hasUpvoted: boolean; upvotesCount: number }>();
 
 function mergePreservingPendingVotes(incoming: Feature[], current: Feature[]): Feature[] {
-  if (pendingVotes.size === 0) return incoming;
+  if (pendingVotes.size === 0 && voteTimers.size === 0) return incoming;
 
   const currentMap = new Map(current.map(f => [f.id, f]));
   return incoming.map(f => {
-    if (pendingVotes.has(f.id)) {
+    if (pendingVotes.has(f.id) || voteTimers.has(f.id)) {
       const local = currentMap.get(f.id);
       if (local) {
         return { ...f, upvotesCount: local.upvotesCount, hasUpvoted: local.hasUpvoted };
@@ -234,7 +237,8 @@ export const store = create<State>((set, get) => ({
         featuresPage: nextPage,
         featuresHasMore: result.hasMore,
       });
-    } catch (e) {
+    } catch (e: any) {
+      console.warn('[FeaturedDeck] Failed to load more features:', e.message);
     }
   },
   
@@ -270,82 +274,103 @@ export const store = create<State>((set, get) => ({
   },
   
   deleteFeature: async (featureId) => {
-    const { user, features } = get();
+    const { user, features, featuresTotal } = get();
     
     if (!user) {
       set({ error: 'User must be set to delete a feature. Call FeaturedDeck.setUser() first.' });
       return false;
     }
     
+    const featureIndex = features.findIndex(f => f.id === featureId);
+    const deletedFeature = features[featureIndex];
+    
+    set({
+      features: features.filter(f => f.id !== featureId),
+      featuresTotal: featuresTotal - 1,
+    });
+    
     try {
       await deleteFeatureQuery(featureId, user.id);
-      
-      set({ 
-        features: features.filter(f => f.id !== featureId),
-        featuresTotal: get().featuresTotal - 1,
-      });
-      
       return true;
     } catch (e: any) {
-      set({ error: e.message || 'Failed to delete feature' });
+      const current = get().features;
+      const restored = [...current];
+      restored.splice(featureIndex, 0, deletedFeature);
+      
+      set({
+        features: restored,
+        featuresTotal: get().featuresTotal + 1,
+        error: e.message || 'Failed to delete feature',
+      });
       return false;
     }
   },
   
   toggleUpvote: async (featureId) => {
-    const { features, user } = get();
+    const { user } = get();
     
     if (!user) {
       set({ error: 'User must be set to vote. Call FeaturedDeck.setUser() first.' });
       return;
     }
     
-    const feature = features.find(f => f.id === featureId);
+    if (pendingVotes.has(featureId)) return;
+    
+    const feature = get().features.find(f => f.id === featureId);
     if (!feature) return;
     
-    const willUpvote = !feature.hasUpvoted;
-    
-    const optimistic = (f: Feature) => ({
-      ...f,
-      hasUpvoted: willUpvote,
-      upvotesCount: willUpvote ? f.upvotesCount + 1 : f.upvotesCount - 1,
-    });
-    
-    pendingVotes.add(featureId);
-    
-    set({
-      features: features.map(f => f.id === featureId ? optimistic(f) : f),
-    });
-    
-    try {
-      const result = await toggleUpvoteQuery(featureId, user.id);
-      
-      pendingVotes.delete(featureId);
-      
-      const serverUpdate = (f: Feature) => ({
-        ...f,
-        upvotesCount: result.upvotesCount,
-        hasUpvoted: result.hasUpvoted,
-      });
-      
-      set({
-        features: get().features.map(f => 
-          f.id === featureId ? serverUpdate(f) : f
-        ),
-      });
-    } catch (e) {
-      pendingVotes.delete(featureId);
-      
-      const revert = (f: Feature) => ({
-        ...f,
-        hasUpvoted: !willUpvote,
-        upvotesCount: willUpvote ? f.upvotesCount - 1 : f.upvotesCount + 1,
-      });
-      
-      set({
-        features: get().features.map(f => f.id === featureId ? revert(f) : f),
+    if (!voteBaseState.has(featureId)) {
+      voteBaseState.set(featureId, {
+        hasUpvoted: feature.hasUpvoted,
+        upvotesCount: feature.upvotesCount,
       });
     }
+    
+    const willUpvote = !feature.hasUpvoted;
+    set({
+      features: get().features.map(f => f.id === featureId ? {
+        ...f,
+        hasUpvoted: willUpvote,
+        upvotesCount: Math.max(0, willUpvote ? f.upvotesCount + 1 : f.upvotesCount - 1),
+      } : f),
+    });
+    
+    const existingTimer = voteTimers.get(featureId);
+    if (existingTimer) clearTimeout(existingTimer);
+    
+    const timer = setTimeout(async () => {
+      voteTimers.delete(featureId);
+      const baseState = voteBaseState.get(featureId);
+      voteBaseState.delete(featureId);
+      
+      if (!baseState) return;
+      
+      const current = get().features.find(f => f.id === featureId);
+      if (!current || current.hasUpvoted === baseState.hasUpvoted) return;
+      
+      pendingVotes.add(featureId);
+      
+      try {
+        const result = await toggleUpvoteQuery(featureId, user.id);
+        pendingVotes.delete(featureId);
+        
+        set({
+          features: get().features.map(f =>
+            f.id === featureId ? { ...f, upvotesCount: result.upvotesCount, hasUpvoted: result.hasUpvoted } : f
+          ),
+        });
+      } catch (e) {
+        pendingVotes.delete(featureId);
+        
+        set({
+          features: get().features.map(f =>
+            f.id === featureId ? { ...f, hasUpvoted: baseState.hasUpvoted, upvotesCount: baseState.upvotesCount } : f
+          ),
+        });
+      }
+    }, VOTE_DEBOUNCE_MS);
+    
+    voteTimers.set(featureId, timer);
   },
   
   loadRoadmap: async () => {

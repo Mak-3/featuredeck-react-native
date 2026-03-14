@@ -7,7 +7,7 @@ import {
   Platform,
 } from 'react-native';
 import { useTheme } from '../../theme';
-import { store, useViewState } from '../../state/store';
+import { store } from '../../state/store';
 
 interface HeaderProps {
   title: string;
@@ -17,7 +17,6 @@ interface HeaderProps {
 
 export function Header({ title, showBack = false, rightAction }: HeaderProps) {
   const theme = useTheme();
-  const viewState = useViewState();
   
   const styles = useMemo(() => StyleSheet.create({
     container: {

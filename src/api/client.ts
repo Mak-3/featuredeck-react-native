@@ -13,10 +13,25 @@ export function getApiKey(): string {
   return apiKey;
 }
 
+export const NETWORK_ERROR = 'NETWORK_ERROR';
+
 export interface ApiResponse<T = any> {
   data: T;
   success: boolean;
   error?: string;
+}
+
+function isNetworkError(error: any): boolean {
+  const msg = (error?.message || '').toLowerCase();
+  return (
+    msg.includes('network request failed') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('timeout') ||
+    msg.includes('aborted') ||
+    msg.includes('internet') ||
+    msg.includes('not connected')
+  );
 }
 
 async function request<T = any>(
@@ -51,10 +66,17 @@ async function request<T = any>(
       success: true,
     };
   } catch (error: any) {
+    if (isNetworkError(error)) {
+      return {
+        data: null as any,
+        success: false,
+        error: NETWORK_ERROR,
+      };
+    }
     return {
       data: null as any,
       success: false,
-      error: error.message || 'Network error',
+      error: error.message || 'Something went wrong',
     };
   }
 }
