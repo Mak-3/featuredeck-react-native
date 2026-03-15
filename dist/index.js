@@ -299,6 +299,52 @@ async function fetchRoadmap() {
   }
   return response.data || [];
 }
+var FLUSH_THRESHOLD = 10;
+var FLUSH_INTERVAL_MS = 3e4;
+var queue = [];
+var flushTimer = null;
+var appStateSubscription = null;
+var running = false;
+function handleAppStateChange(nextState) {
+  if (nextState === "background" || nextState === "inactive") {
+    flush();
+  }
+}
+function trackEvent(event, metadata) {
+  queue.push({ event, timestamp: Date.now(), metadata });
+  if (queue.length >= FLUSH_THRESHOLD) {
+    flush();
+  }
+}
+async function flush() {
+  if (queue.length === 0) return;
+  const batch = [...queue];
+  queue = [];
+  try {
+    await post("/events", { events: batch });
+  } catch {
+    queue = [...batch, ...queue];
+  }
+}
+function startEventTracker() {
+  if (running) return;
+  running = true;
+  flushTimer = setInterval(flush, FLUSH_INTERVAL_MS);
+  appStateSubscription = reactNative.AppState.addEventListener("change", handleAppStateChange);
+}
+function stopEventTracker() {
+  if (!running) return;
+  running = false;
+  flush();
+  if (flushTimer) {
+    clearInterval(flushTimer);
+    flushTimer = null;
+  }
+  if (appStateSubscription) {
+    appStateSubscription.remove();
+    appStateSubscription = null;
+  }
+}
 
 // src/state/store.ts
 var VOTE_DEBOUNCE_MS = 500;
@@ -379,6 +425,7 @@ var store = zustand.create((set, get2) => ({
   },
   open: () => {
     set({ visible: true, viewState: { type: "board" }, error: null });
+    trackEvent("featureboard_opened");
     get2().loadFeatures(true);
   },
   close: () => {
@@ -1752,6 +1799,10 @@ function FeatureDeckProvider({
       store.getState().setTheme(customTheme);
     }
   }, [customTheme]);
+  react.useEffect(() => {
+    startEventTracker();
+    return () => stopEventTracker();
+  }, []);
   return /* @__PURE__ */ jsxRuntime.jsxs(ThemeProvider, { value: storeTheme, children: [
     children,
     /* @__PURE__ */ jsxRuntime.jsx(FeedbackModal, {})

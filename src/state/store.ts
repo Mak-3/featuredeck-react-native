@@ -16,6 +16,7 @@ import {
   fetchRoadmap as fetchRoadmapQuery,
 } from '../api';
 import { setApiKey, NETWORK_ERROR } from '../api';
+import { trackEvent } from '../api/eventTracker';
 
 type ViewState = 
   | { type: 'board' }
@@ -158,6 +159,7 @@ export const store = create<State>((set, get) => ({
 
   open: () => {
     set({ visible: true, viewState: { type: 'board' }, error: null });
+    trackEvent('featureboard_opened');
     get().loadFeatures(true);
   },
   

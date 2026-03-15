@@ -3,6 +3,7 @@ import { store, useThemeStore } from '../state/store';
 import { ThemeProvider } from '../theme';
 import { FeedbackModal } from '../ui/FeedbackModal';
 import { FeatureDeckProviderProps } from '../types';
+import { startEventTracker, stopEventTracker } from '../api/eventTracker';
 
 export function FeatureDeckProvider({ 
   children, 
@@ -15,6 +16,11 @@ export function FeatureDeckProvider({
       store.getState().setTheme(customTheme);
     }
   }, [customTheme]);
+
+  useEffect(() => {
+    startEventTracker();
+    return () => stopEventTracker();
+  }, []);
 
   return (
     <ThemeProvider value={storeTheme}>

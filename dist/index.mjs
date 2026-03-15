@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
-import { StyleSheet, Modal, View, StatusBar, Text, TouchableOpacity, Platform, FlatList, RefreshControl, SectionList, KeyboardAvoidingView, ScrollView, TextInput, ActivityIndicator, Animated, Alert } from 'react-native';
+import { StyleSheet, AppState, Modal, View, StatusBar, Text, TouchableOpacity, Platform, FlatList, RefreshControl, SectionList, KeyboardAvoidingView, ScrollView, TextInput, ActivityIndicator, Animated, Alert } from 'react-native';
 import { jsxs, jsx } from 'react/jsx-runtime';
 
 // src/state/store.ts
@@ -297,6 +297,52 @@ async function fetchRoadmap() {
   }
   return response.data || [];
 }
+var FLUSH_THRESHOLD = 10;
+var FLUSH_INTERVAL_MS = 3e4;
+var queue = [];
+var flushTimer = null;
+var appStateSubscription = null;
+var running = false;
+function handleAppStateChange(nextState) {
+  if (nextState === "background" || nextState === "inactive") {
+    flush();
+  }
+}
+function trackEvent(event, metadata) {
+  queue.push({ event, timestamp: Date.now(), metadata });
+  if (queue.length >= FLUSH_THRESHOLD) {
+    flush();
+  }
+}
+async function flush() {
+  if (queue.length === 0) return;
+  const batch = [...queue];
+  queue = [];
+  try {
+    await post("/events", { events: batch });
+  } catch {
+    queue = [...batch, ...queue];
+  }
+}
+function startEventTracker() {
+  if (running) return;
+  running = true;
+  flushTimer = setInterval(flush, FLUSH_INTERVAL_MS);
+  appStateSubscription = AppState.addEventListener("change", handleAppStateChange);
+}
+function stopEventTracker() {
+  if (!running) return;
+  running = false;
+  flush();
+  if (flushTimer) {
+    clearInterval(flushTimer);
+    flushTimer = null;
+  }
+  if (appStateSubscription) {
+    appStateSubscription.remove();
+    appStateSubscription = null;
+  }
+}
 
 // src/state/store.ts
 var VOTE_DEBOUNCE_MS = 500;
@@ -377,6 +423,7 @@ var store = create((set, get2) => ({
   },
   open: () => {
     set({ visible: true, viewState: { type: "board" }, error: null });
+    trackEvent("featureboard_opened");
     get2().loadFeatures(true);
   },
   close: () => {
@@ -1750,6 +1797,10 @@ function FeatureDeckProvider({
       store.getState().setTheme(customTheme);
     }
   }, [customTheme]);
+  useEffect(() => {
+    startEventTracker();
+    return () => stopEventTracker();
+  }, []);
   return /* @__PURE__ */ jsxs(ThemeProvider, { value: storeTheme, children: [
     children,
     /* @__PURE__ */ jsx(FeedbackModal, {})
