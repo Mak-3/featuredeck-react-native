@@ -69,7 +69,11 @@ export async function createFeature(
   const response = await post<Feature>('/features', {
     title,
     description,
-    endUser: user,
+    endUser: {
+      id: user.externalUserId,
+      username: user.username,
+      email: user.email,
+    },
   });
 
   if (!response.success) {

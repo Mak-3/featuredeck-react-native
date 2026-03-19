@@ -104,6 +104,9 @@ export function AddFeature() {
           {/* Error Message */}
           {error && (
             <View
+              accessible
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
               style={[
                 styles.errorBanner,
                 {
@@ -116,7 +119,7 @@ export function AddFeature() {
                 },
               ]}
             >
-              <Text style={{ fontSize: 16, marginRight: 8 }}>
+              <Text style={{ fontSize: 16, marginRight: 8 }} accessibilityElementsHidden>
                 {error === NETWORK_ERROR ? '📡' : '⚠️'}
               </Text>
               <Text style={{
@@ -172,9 +175,13 @@ export function AddFeature() {
               onChangeText={(text) => setTitle(text.slice(0, MAX_TITLE_LENGTH))}
               onBlur={() => setTouched(t => ({ ...t, title: true }))}
               maxLength={MAX_TITLE_LENGTH}
+              accessibilityLabel="Feature title"
+              accessibilityHint="Enter a short title for your feature request"
             />
             {titleError && (
               <Text
+                accessibilityLiveRegion="polite"
+                accessibilityRole="alert"
                 style={{
                   color: theme.colors.error,
                   fontSize: theme.typography.sizeSm,
@@ -239,9 +246,13 @@ export function AddFeature() {
               numberOfLines={6}
               textAlignVertical="top"
               maxLength={MAX_DESCRIPTION_LENGTH}
+              accessibilityLabel="Feature description"
+              accessibilityHint="Describe the feature in detail, minimum 20 characters"
             />
             {descriptionError && (
               <Text
+                accessibilityLiveRegion="polite"
+                accessibilityRole="alert"
                 style={{
                   color: theme.colors.error,
                   fontSize: theme.typography.sizeSm,
@@ -316,6 +327,9 @@ export function AddFeature() {
             ]}
             onPress={handleSubmit}
             disabled={!isValid || isLoading}
+            accessibilityRole="button"
+            accessibilityLabel={isLoading ? 'Submitting feature request' : 'Submit feature request'}
+            accessibilityState={{ disabled: !isValid || isLoading, busy: isLoading }}
           >
             {isLoading ? (
               <ActivityIndicator size="small" color={theme.colors.textInverse} />

@@ -166,7 +166,7 @@ declare function useUser(): User | null;
 declare function useUpvote(featureId: string): {
     upvotesCount: number;
     hasUpvoted: boolean;
-    toggle: () => Promise<void>;
+    toggle: () => void;
 };
 declare function useRoadmap(): {
     features: RoadmapFeature[];

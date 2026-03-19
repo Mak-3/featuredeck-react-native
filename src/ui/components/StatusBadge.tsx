@@ -31,6 +31,9 @@ export function StatusBadge({ status, size = 'medium' }: StatusBadgeProps) {
 
   return (
     <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`Status: ${label}`}
       style={[
         styles.badge,
         {
@@ -42,6 +45,8 @@ export function StatusBadge({ status, size = 'medium' }: StatusBadgeProps) {
       ]}
     >
       <View
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
         style={[
           styles.dot,
           {

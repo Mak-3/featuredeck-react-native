@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,17 +16,17 @@ interface FeatureCardProps {
   feature: Feature;
 }
 
-export function FeatureCard({ feature }: FeatureCardProps) {
+export const FeatureCard = React.memo(function FeatureCard({ feature }: FeatureCardProps) {
   const theme = useTheme();
   const user = useUser();
 
   const isAuthor = !!user && !!feature.createdByEndUserId && user.id === feature.createdByEndUserId;
 
-  const handleUpvote = () => {
+  const handleUpvote = useCallback(() => {
     store.getState().toggleUpvote(feature.id);
-  };
+  }, [feature.id]);
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     Alert.alert(
       'Delete Feature',
       'Are you sure you want to delete this feature request?',
@@ -39,10 +39,12 @@ export function FeatureCard({ feature }: FeatureCardProps) {
         },
       ]
     );
-  };
+  }, [feature.id]);
 
   return (
     <View
+      accessible
+      accessibilityLabel={`${feature.title}. ${feature.description || ''}. ${feature.upvotesCount} ${feature.upvotesCount === 1 ? 'vote' : 'votes'}. Status: ${feature.status}`}
       style={[
         styles.container,
         {
@@ -97,6 +99,8 @@ export function FeatureCard({ feature }: FeatureCardProps) {
               <TouchableOpacity
                 onPress={handleDelete}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete feature: ${feature.title}`}
                 style={[
                   styles.deleteButton,
                   {
@@ -115,7 +119,7 @@ export function FeatureCard({ feature }: FeatureCardProps) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

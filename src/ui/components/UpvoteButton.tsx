@@ -1,11 +1,5 @@
-import React, { useRef, useMemo } from 'react';
-import {
-  TouchableOpacity,
-  View,
-  Text,
-  StyleSheet,
-  Animated,
-} from 'react-native';
+import React from 'react';
+import { Pressable, View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../../theme';
 
 interface UpvoteButtonProps {
@@ -16,12 +10,8 @@ interface UpvoteButtonProps {
 }
 
 function formatCount(count: number): string {
-  if (count >= 1000000) {
-    return (count / 1000000).toFixed(1) + 'M';
-  }
-  if (count >= 1000) {
-    return (count / 1000).toFixed(1) + 'K';
-  }
+  if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
+  if (count >= 1000) return (count / 1000).toFixed(1) + 'K';
   return String(count);
 }
 
@@ -32,43 +22,6 @@ export function UpvoteButton({
   size = 'medium',
 }: UpvoteButtonProps) {
   const theme = useTheme();
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  
-  const styles = useMemo(() => StyleSheet.create({
-    container: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 8,
-    },
-    arrow: {
-      width: 0,
-      height: 0,
-      backgroundColor: 'transparent',
-      borderStyle: 'solid',
-      borderLeftColor: 'transparent',
-      borderRightColor: 'transparent',
-    },
-    count: {
-      fontWeight: '700',
-    },
-  }), []);
-
-  const handlePress = () => {
-    Animated.sequence([
-      Animated.spring(scaleAnim, {
-        toValue: 1.2,
-        useNativeDriver: true,
-        friction: 3,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 3,
-      }),
-    ]).start();
-    
-    onPress();
-  };
 
   const sizeConfig = {
     small: { width: 44, height: 52, iconSize: 12, textSize: theme.typography.sizeSm },
@@ -78,16 +31,18 @@ export function UpvoteButton({
 
   const config = sizeConfig[size];
   const activeColor = hasUpvoted ? theme.colors.upvoteActive : theme.colors.upvote;
-  const bgColor = hasUpvoted 
-    ? theme.colors.upvoteActive + '15' 
+  const bgColor = hasUpvoted
+    ? theme.colors.upvoteActive + '15'
     : theme.colors.backgroundSecondary;
 
   return (
-    <TouchableOpacity
-      onPress={handlePress}
-      activeOpacity={0.7}
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${hasUpvoted ? 'Remove upvote' : 'Upvote'}, ${count} ${count === 1 ? 'vote' : 'votes'}`}
+      accessibilityState={{ selected: hasUpvoted }}
     >
-      <Animated.View
+      <View
         style={[
           styles.container,
           {
@@ -97,12 +52,12 @@ export function UpvoteButton({
             borderRadius: theme.borderRadius.md,
             borderWidth: hasUpvoted ? 1.5 : 0,
             borderColor: hasUpvoted ? theme.colors.upvoteActive : 'transparent',
-            transform: [{ scale: scaleAnim }],
           },
         ]}
       >
-        {/* Triangle Arrow */}
         <View
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
           style={[
             styles.arrow,
             {
@@ -126,11 +81,26 @@ export function UpvoteButton({
         >
           {formatCount(count)}
         </Text>
-      </Animated.View>
-    </TouchableOpacity>
+      </View>
+    </Pressable>
   );
 }
 
-
-
-
+const styles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  arrow: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+  count: {
+    fontWeight: '700',
+  },
+});

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -74,11 +74,16 @@ export function FeatureBoard() {
     store.getState().close();
   };
 
+  const renderFeatureItem = useCallback(
+    ({ item }: { item: any }) => <FeatureCard feature={item} />,
+    []
+  );
+
   const isOffline = error === NETWORK_ERROR;
 
   const renderOfflineState = () => (
-    <View style={styles.emptyContainer}>
-      <Text style={{ fontSize: 48, marginBottom: 16 }}>📡</Text>
+    <View style={styles.emptyContainer} accessibilityLiveRegion="polite">
+      <Text style={{ fontSize: 48, marginBottom: 16 }} accessibilityElementsHidden>📡</Text>
       <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
         No internet connection
       </Text>
@@ -88,6 +93,8 @@ export function FeatureBoard() {
       <TouchableOpacity
         style={{ backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
         onPress={handleRefresh}
+        accessibilityRole="button"
+        accessibilityLabel="Retry loading"
       >
         <Text style={{ color: theme.colors.textInverse, fontWeight: '600' }}>Retry</Text>
       </TouchableOpacity>
@@ -109,8 +116,8 @@ export function FeatureBoard() {
 
     if (error) {
       return (
-        <View style={styles.emptyContainer}>
-          <Text style={{ fontSize: 48, marginBottom: 16 }}>😕</Text>
+        <View style={styles.emptyContainer} accessibilityLiveRegion="assertive">
+          <Text style={{ fontSize: 48, marginBottom: 16 }} accessibilityElementsHidden>😕</Text>
           <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
             Something went wrong
           </Text>
@@ -120,6 +127,8 @@ export function FeatureBoard() {
           <TouchableOpacity
             style={{ backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
             onPress={handleRefresh}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
           >
             <Text style={{ color: theme.colors.textInverse, fontWeight: '600' }}>Try Again</Text>
           </TouchableOpacity>
@@ -129,7 +138,7 @@ export function FeatureBoard() {
 
     return (
       <View style={styles.emptyContainer}>
-        <Text style={{ fontSize: 64, marginBottom: 16 }}>💡</Text>
+        <Text style={{ fontSize: 64, marginBottom: 16 }} accessibilityElementsHidden>💡</Text>
         <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
           No features yet
         </Text>
@@ -164,8 +173,8 @@ export function FeatureBoard() {
 
     if (error) {
       return (
-        <View style={styles.emptyContainer}>
-          <Text style={{ fontSize: 48, marginBottom: 16 }}>😕</Text>
+        <View style={styles.emptyContainer} accessibilityLiveRegion="assertive">
+          <Text style={{ fontSize: 48, marginBottom: 16 }} accessibilityElementsHidden>😕</Text>
           <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
             Something went wrong
           </Text>
@@ -175,6 +184,8 @@ export function FeatureBoard() {
           <TouchableOpacity
             style={{ backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
             onPress={handleRefresh}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
           >
             <Text style={{ color: theme.colors.textInverse, fontWeight: '600' }}>Try Again</Text>
           </TouchableOpacity>
@@ -184,7 +195,7 @@ export function FeatureBoard() {
 
     return (
       <View style={styles.emptyContainer}>
-        <Text style={{ fontSize: 48, marginBottom: 12 }}>🗺️</Text>
+        <Text style={{ fontSize: 48, marginBottom: 12 }} accessibilityElementsHidden>🗺️</Text>
         <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
           No roadmap items yet
         </Text>
@@ -210,20 +221,28 @@ export function FeatureBoard() {
         ]}
       >
         <View style={styles.headerRow}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Features</Text>
-          <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text accessibilityRole="header" style={[styles.headerTitle, { color: theme.colors.text }]}>Features</Text>
+          <TouchableOpacity
+            onPress={handleClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          >
             <Text style={{ color: theme.colors.textSecondary, fontSize: 22, fontWeight: '300' }}>✕</Text>
           </TouchableOpacity>
         </View>
 
         {/* Tabs */}
-        <View style={styles.tabRow}>
+        <View style={styles.tabRow} accessibilityRole="tablist">
           <TouchableOpacity
             style={[
               styles.tab,
               activeTab === 'features' && { borderBottomWidth: 2, borderBottomColor: theme.colors.primary },
             ]}
             onPress={() => setActiveTab('features')}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === 'features' }}
+            accessibilityLabel="Features"
           >
             <Text
               style={[
@@ -243,6 +262,9 @@ export function FeatureBoard() {
               activeTab === 'roadmap' && { borderBottomWidth: 2, borderBottomColor: theme.colors.primary },
             ]}
             onPress={() => setActiveTab('roadmap')}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === 'roadmap' }}
+            accessibilityLabel="Roadmap"
           >
             <Text
               style={[
@@ -274,7 +296,7 @@ export function FeatureBoard() {
         <FlatList
           data={features}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <FeatureCard feature={item} />}
+          renderItem={renderFeatureItem}
           contentContainerStyle={{ padding: 16, paddingTop: 12, flexGrow: 1 }}
           ListEmptyComponent={renderFeaturesEmpty}
           ListFooterComponent={renderFeaturesFooter}
@@ -296,6 +318,7 @@ export function FeatureBoard() {
           keyExtractor={(item) => item.id}
           renderSectionHeader={({ section }) => (
             <Text
+              accessibilityRole="header"
               style={{
                 color: theme.colors.text,
                 fontSize: 15,
@@ -367,8 +390,10 @@ export function FeatureBoard() {
           <TouchableOpacity
             style={[styles.addButton, { backgroundColor: theme.colors.text }]}
             onPress={handleAddFeature}
+            accessibilityRole="button"
+            accessibilityLabel="Add a new feature request"
           >
-            <Text style={{ marginRight: 6, fontSize: 14 }}>✏️</Text>
+            <Text style={{ marginRight: 6, fontSize: 14 }} accessibilityElementsHidden>✏️</Text>
             <Text style={{ color: theme.colors.textInverse, fontSize: 15, fontWeight: '600' }}>
               Add Feature
             </Text>

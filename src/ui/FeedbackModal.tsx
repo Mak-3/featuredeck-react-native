@@ -45,6 +45,7 @@ export function FeedbackModal() {
       presentationStyle="pageSheet"
       visible={visible}
       onRequestClose={() => store.getState().close()}
+      accessibilityViewIsModal
     >
       <ModalContent />
     </Modal>

@@ -84,6 +84,8 @@ export function Header({ title, showBack = false, rightAction }: HeaderProps) {
         style={styles.leftButton}
         onPress={showBack ? handleBack : handleClose}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityRole="button"
+        accessibilityLabel={showBack ? 'Go back' : 'Close'}
       >
         {showBack ? (
           <View style={styles.backIcon}>
@@ -105,6 +107,7 @@ export function Header({ title, showBack = false, rightAction }: HeaderProps) {
 
       {/* Title */}
       <Text
+        accessibilityRole="header"
         style={[
           styles.title,
           {

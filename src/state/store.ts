@@ -22,17 +22,41 @@ type ViewState =
   | { type: 'board' }
   | { type: 'add-feature' };
 
-const VOTE_DEBOUNCE_MS = 500;
-const pendingVotes = new Set<string>();
-const voteTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const voteBaseState = new Map<string, { hasUpvoted: boolean; upvotesCount: number }>();
+const VOTE_DEBOUNCE_MS = 300;
+const MAX_VOTE_RETRIES = 2;
 
-function mergePreservingPendingVotes(incoming: Feature[], current: Feature[]): Feature[] {
-  if (pendingVotes.size === 0 && voteTimers.size === 0) return incoming;
+interface PendingVote {
+  serverUpvoted: boolean;
+  serverCount: number;
+  inflight: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+  retries: number;
+}
+
+const pendingVotes = new Map<string, PendingVote>();
+
+function cleanupPendingVote(featureId: string) {
+  const pv = pendingVotes.get(featureId);
+  if (pv?.timer) clearTimeout(pv.timer);
+  pendingVotes.delete(featureId);
+}
+
+function scheduleFlush(pv: PendingVote, featureId: string, externalUserId: string) {
+  if (pv.timer) clearTimeout(pv.timer);
+  pv.timer = setTimeout(() => {
+    const current = pendingVotes.get(featureId);
+    if (current !== pv) return;
+    pv.timer = undefined;
+    flushVote(featureId, externalUserId);
+  }, VOTE_DEBOUNCE_MS);
+}
+
+function mergePreservingOptimisticVotes(incoming: Feature[], current: Feature[]): Feature[] {
+  if (pendingVotes.size === 0) return incoming;
 
   const currentMap = new Map(current.map(f => [f.id, f]));
   return incoming.map(f => {
-    if (pendingVotes.has(f.id) || voteTimers.has(f.id)) {
+    if (pendingVotes.has(f.id)) {
       const local = currentMap.get(f.id);
       if (local) {
         return { ...f, upvotesCount: local.upvotesCount, hasUpvoted: local.hasUpvoted };
@@ -40,6 +64,75 @@ function mergePreservingPendingVotes(incoming: Feature[], current: Feature[]): F
     }
     return f;
   });
+}
+
+async function flushVote(featureId: string, externalUserId: string) {
+  const pv = pendingVotes.get(featureId);
+  if (!pv || pv.inflight) return;
+
+  const feature = store.getState().features.find(f => f.id === featureId);
+  if (!feature) {
+    cleanupPendingVote(featureId);
+    return;
+  }
+
+  if (feature.hasUpvoted === pv.serverUpvoted) {
+    cleanupPendingVote(featureId);
+    return;
+  }
+
+  pv.inflight = true;
+
+  try {
+    const result = await toggleUpvoteQuery(featureId, externalUserId);
+    pv.serverUpvoted = result.hasUpvoted;
+    pv.serverCount = result.upvotesCount;
+    pv.inflight = false;
+
+    const latest = store.getState().features.find(f => f.id === featureId);
+    if (!latest) {
+      cleanupPendingVote(featureId);
+      return;
+    }
+
+    if (latest.hasUpvoted !== pv.serverUpvoted) {
+      // Still out of sync — schedule another flush through the debounce
+      // (never fire back-to-back API calls; give server time between requests)
+      if (!pv.timer) {
+        scheduleFlush(pv, featureId, externalUserId);
+      }
+    } else {
+      store.setState(state => ({
+        features: state.features.map(f =>
+          f.id === featureId
+            ? { ...f, upvotesCount: result.upvotesCount, hasUpvoted: result.hasUpvoted }
+            : f
+        ),
+      }));
+      cleanupPendingVote(featureId);
+    }
+  } catch {
+    pv.inflight = false;
+
+    if (pv.timer) return;
+
+    if (pv.retries < MAX_VOTE_RETRIES) {
+      pv.retries++;
+      scheduleFlush(pv, featureId, externalUserId);
+    } else {
+      store.setState(state => ({
+        features: state.features.map(f => {
+          if (f.id !== featureId) return f;
+          return {
+            ...f,
+            hasUpvoted: pv!.serverUpvoted,
+            upvotesCount: pv!.serverCount,
+          };
+        }),
+      }));
+      cleanupPendingVote(featureId);
+    }
+  }
 }
 
 interface State {
@@ -79,7 +172,7 @@ interface State {
   loadMoreFeatures: () => Promise<void>;
   createFeature: (title: string, description: string) => Promise<boolean>;
   deleteFeature: (featureId: string) => Promise<boolean>;
-  toggleUpvote: (featureId: string) => Promise<void>;
+  toggleUpvote: (featureId: string) => void;
   
   loadRoadmap: () => Promise<void>;
 }
@@ -198,12 +291,12 @@ export const store = create<State>((set, get) => ({
     
     try {
       const result = await fetchFeatures({
-        endUserId: user?.id,
+        endUserId: user?.externalUserId,
         page: 1,
         pageSize: 20,
       });
       
-      const merged = mergePreservingPendingVotes(result.data, get().features);
+      const merged = mergePreservingOptimisticVotes(result.data, get().features);
       
       set({
         features: merged,
@@ -229,7 +322,7 @@ export const store = create<State>((set, get) => ({
     
     try {
       const result = await fetchFeatures({
-        endUserId: user?.id,
+        endUserId: user?.externalUserId,
         page: nextPage,
         pageSize: 20,
       });
@@ -292,7 +385,7 @@ export const store = create<State>((set, get) => ({
     });
     
     try {
-      await deleteFeatureQuery(featureId, user.id);
+      await deleteFeatureQuery(featureId, user.externalUserId);
       return true;
     } catch (e: any) {
       const current = get().features;
@@ -308,7 +401,7 @@ export const store = create<State>((set, get) => ({
     }
   },
   
-  toggleUpvote: async (featureId) => {
+  toggleUpvote: (featureId) => {
     const { user } = get();
     
     if (!user) {
@@ -316,63 +409,32 @@ export const store = create<State>((set, get) => ({
       return;
     }
     
-    if (pendingVotes.has(featureId)) return;
-    
     const feature = get().features.find(f => f.id === featureId);
     if (!feature) return;
     
-    if (!voteBaseState.has(featureId)) {
-      voteBaseState.set(featureId, {
-        hasUpvoted: feature.hasUpvoted,
-        upvotesCount: feature.upvotesCount,
-      });
+    let pv = pendingVotes.get(featureId);
+    if (!pv) {
+      pv = {
+        serverUpvoted: feature.hasUpvoted,
+        serverCount: feature.upvotesCount,
+        inflight: false,
+        retries: 0,
+      };
+      pendingVotes.set(featureId, pv);
     }
     
     const willUpvote = !feature.hasUpvoted;
-    set({
-      features: get().features.map(f => f.id === featureId ? {
+    set(state => ({
+      features: state.features.map(f => f.id === featureId ? {
         ...f,
         hasUpvoted: willUpvote,
         upvotesCount: Math.max(0, willUpvote ? f.upvotesCount + 1 : f.upvotesCount - 1),
       } : f),
-    });
+    }));
     
-    const existingTimer = voteTimers.get(featureId);
-    if (existingTimer) clearTimeout(existingTimer);
-    
-    const timer = setTimeout(async () => {
-      voteTimers.delete(featureId);
-      const baseState = voteBaseState.get(featureId);
-      voteBaseState.delete(featureId);
-      
-      if (!baseState) return;
-      
-      const current = get().features.find(f => f.id === featureId);
-      if (!current || current.hasUpvoted === baseState.hasUpvoted) return;
-      
-      pendingVotes.add(featureId);
-      
-      try {
-        const result = await toggleUpvoteQuery(featureId, user.id);
-        pendingVotes.delete(featureId);
-        
-        set({
-          features: get().features.map(f =>
-            f.id === featureId ? { ...f, upvotesCount: result.upvotesCount, hasUpvoted: result.hasUpvoted } : f
-          ),
-        });
-      } catch (e) {
-        pendingVotes.delete(featureId);
-        
-        set({
-          features: get().features.map(f =>
-            f.id === featureId ? { ...f, hasUpvoted: baseState.hasUpvoted, upvotesCount: baseState.upvotesCount } : f
-          ),
-        });
-      }
-    }, VOTE_DEBOUNCE_MS);
-    
-    voteTimers.set(featureId, timer);
+    pv.retries = 0;
+    const externalUserId = user.externalUserId;
+    scheduleFlush(pv, featureId, externalUserId);
   },
   
   loadRoadmap: async () => {

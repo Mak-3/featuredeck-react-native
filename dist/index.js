@@ -1,9 +1,13 @@
 'use strict';
 
 var zustand = require('zustand');
-var react = require('react');
+var React3 = require('react');
 var reactNative = require('react-native');
 var jsxRuntime = require('react/jsx-runtime');
+
+function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
+
+var React3__default = /*#__PURE__*/_interopDefault(React3);
 
 // src/state/store.ts
 var defaultColors = {
@@ -121,8 +125,8 @@ var darkTheme = {
   borderRadius: defaultBorderRadius,
   isDark: true
 };
-var ThemeContext = react.createContext(lightTheme);
-var useTheme = () => react.useContext(ThemeContext);
+var ThemeContext = React3.createContext(lightTheme);
+var useTheme = () => React3.useContext(ThemeContext);
 var ThemeProvider = ThemeContext.Provider;
 function mergeTheme(baseTheme, customTheme) {
   var _a;
@@ -269,7 +273,11 @@ async function createFeature(title, description, user) {
   const response = await post("/features", {
     title,
     description,
-    endUser: user
+    endUser: {
+      id: user.externalUserId,
+      username: user.username,
+      email: user.email
+    }
   });
   if (!response.success) {
     throw new Error(response.error || "Failed to create feature");
@@ -347,15 +355,28 @@ function stopEventTracker() {
 }
 
 // src/state/store.ts
-var VOTE_DEBOUNCE_MS = 500;
-var pendingVotes = /* @__PURE__ */ new Set();
-var voteTimers = /* @__PURE__ */ new Map();
-var voteBaseState = /* @__PURE__ */ new Map();
-function mergePreservingPendingVotes(incoming, current) {
-  if (pendingVotes.size === 0 && voteTimers.size === 0) return incoming;
+var VOTE_DEBOUNCE_MS = 300;
+var MAX_VOTE_RETRIES = 2;
+var pendingVotes = /* @__PURE__ */ new Map();
+function cleanupPendingVote(featureId) {
+  const pv = pendingVotes.get(featureId);
+  if (pv == null ? void 0 : pv.timer) clearTimeout(pv.timer);
+  pendingVotes.delete(featureId);
+}
+function scheduleFlush(pv, featureId, externalUserId) {
+  if (pv.timer) clearTimeout(pv.timer);
+  pv.timer = setTimeout(() => {
+    const current = pendingVotes.get(featureId);
+    if (current !== pv) return;
+    pv.timer = void 0;
+    flushVote(featureId, externalUserId);
+  }, VOTE_DEBOUNCE_MS);
+}
+function mergePreservingOptimisticVotes(incoming, current) {
+  if (pendingVotes.size === 0) return incoming;
   const currentMap = new Map(current.map((f) => [f.id, f]));
   return incoming.map((f) => {
-    if (pendingVotes.has(f.id) || voteTimers.has(f.id)) {
+    if (pendingVotes.has(f.id)) {
       const local = currentMap.get(f.id);
       if (local) {
         return { ...f, upvotesCount: local.upvotesCount, hasUpvoted: local.hasUpvoted };
@@ -363,6 +384,62 @@ function mergePreservingPendingVotes(incoming, current) {
     }
     return f;
   });
+}
+async function flushVote(featureId, externalUserId) {
+  const pv = pendingVotes.get(featureId);
+  if (!pv || pv.inflight) return;
+  const feature = store.getState().features.find((f) => f.id === featureId);
+  if (!feature) {
+    cleanupPendingVote(featureId);
+    return;
+  }
+  if (feature.hasUpvoted === pv.serverUpvoted) {
+    cleanupPendingVote(featureId);
+    return;
+  }
+  pv.inflight = true;
+  try {
+    const result = await toggleUpvote(featureId, externalUserId);
+    pv.serverUpvoted = result.hasUpvoted;
+    pv.serverCount = result.upvotesCount;
+    pv.inflight = false;
+    const latest = store.getState().features.find((f) => f.id === featureId);
+    if (!latest) {
+      cleanupPendingVote(featureId);
+      return;
+    }
+    if (latest.hasUpvoted !== pv.serverUpvoted) {
+      if (!pv.timer) {
+        scheduleFlush(pv, featureId, externalUserId);
+      }
+    } else {
+      store.setState((state) => ({
+        features: state.features.map(
+          (f) => f.id === featureId ? { ...f, upvotesCount: result.upvotesCount, hasUpvoted: result.hasUpvoted } : f
+        )
+      }));
+      cleanupPendingVote(featureId);
+    }
+  } catch {
+    pv.inflight = false;
+    if (pv.timer) return;
+    if (pv.retries < MAX_VOTE_RETRIES) {
+      pv.retries++;
+      scheduleFlush(pv, featureId, externalUserId);
+    } else {
+      store.setState((state) => ({
+        features: state.features.map((f) => {
+          if (f.id !== featureId) return f;
+          return {
+            ...f,
+            hasUpvoted: pv.serverUpvoted,
+            upvotesCount: pv.serverCount
+          };
+        })
+      }));
+      cleanupPendingVote(featureId);
+    }
+  }
 }
 var store = zustand.create((set, get2) => ({
   apiKey: null,
@@ -457,11 +534,11 @@ var store = zustand.create((set, get2) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await fetchFeatures({
-        endUserId: user == null ? void 0 : user.id,
+        endUserId: user == null ? void 0 : user.externalUserId,
         page: 1,
         pageSize: 20
       });
-      const merged = mergePreservingPendingVotes(result.data, get2().features);
+      const merged = mergePreservingOptimisticVotes(result.data, get2().features);
       set({
         features: merged,
         featuresTotal: result.total,
@@ -482,7 +559,7 @@ var store = zustand.create((set, get2) => ({
     const nextPage = featuresPage + 1;
     try {
       const result = await fetchFeatures({
-        endUserId: user == null ? void 0 : user.id,
+        endUserId: user == null ? void 0 : user.externalUserId,
         page: nextPage,
         pageSize: 20
       });
@@ -533,7 +610,7 @@ var store = zustand.create((set, get2) => ({
       featuresTotal: featuresTotal - 1
     });
     try {
-      await deleteFeature(featureId, user.id);
+      await deleteFeature(featureId, user.externalUserId);
       return true;
     } catch (e) {
       const current = get2().features;
@@ -547,57 +624,35 @@ var store = zustand.create((set, get2) => ({
       return false;
     }
   },
-  toggleUpvote: async (featureId) => {
+  toggleUpvote: (featureId) => {
     const { user } = get2();
     if (!user) {
       set({ error: "User must be set to vote. Call FeatureDeck.setUser() first." });
       return;
     }
-    if (pendingVotes.has(featureId)) return;
     const feature = get2().features.find((f) => f.id === featureId);
     if (!feature) return;
-    if (!voteBaseState.has(featureId)) {
-      voteBaseState.set(featureId, {
-        hasUpvoted: feature.hasUpvoted,
-        upvotesCount: feature.upvotesCount
-      });
+    let pv = pendingVotes.get(featureId);
+    if (!pv) {
+      pv = {
+        serverUpvoted: feature.hasUpvoted,
+        serverCount: feature.upvotesCount,
+        inflight: false,
+        retries: 0
+      };
+      pendingVotes.set(featureId, pv);
     }
     const willUpvote = !feature.hasUpvoted;
-    set({
-      features: get2().features.map((f) => f.id === featureId ? {
+    set((state) => ({
+      features: state.features.map((f) => f.id === featureId ? {
         ...f,
         hasUpvoted: willUpvote,
         upvotesCount: Math.max(0, willUpvote ? f.upvotesCount + 1 : f.upvotesCount - 1)
       } : f)
-    });
-    const existingTimer = voteTimers.get(featureId);
-    if (existingTimer) clearTimeout(existingTimer);
-    const timer = setTimeout(async () => {
-      voteTimers.delete(featureId);
-      const baseState = voteBaseState.get(featureId);
-      voteBaseState.delete(featureId);
-      if (!baseState) return;
-      const current = get2().features.find((f) => f.id === featureId);
-      if (!current || current.hasUpvoted === baseState.hasUpvoted) return;
-      pendingVotes.add(featureId);
-      try {
-        const result = await toggleUpvote(featureId, user.id);
-        pendingVotes.delete(featureId);
-        set({
-          features: get2().features.map(
-            (f) => f.id === featureId ? { ...f, upvotesCount: result.upvotesCount, hasUpvoted: result.hasUpvoted } : f
-          )
-        });
-      } catch (e) {
-        pendingVotes.delete(featureId);
-        set({
-          features: get2().features.map(
-            (f) => f.id === featureId ? { ...f, hasUpvoted: baseState.hasUpvoted, upvotesCount: baseState.upvotesCount } : f
-          )
-        });
-      }
-    }, VOTE_DEBOUNCE_MS);
-    voteTimers.set(featureId, timer);
+    }));
+    pv.retries = 0;
+    const externalUserId = user.externalUserId;
+    scheduleFlush(pv, featureId, externalUserId);
   },
   loadRoadmap: async () => {
     set({ roadmapLoading: true, error: null });
@@ -672,7 +727,7 @@ function StatusBadge({ status, size = "medium" }) {
   const theme = useTheme();
   const color = getStatusColor(status, theme.colors);
   const label = getStatusLabel(status);
-  const styles3 = react.useMemo(() => reactNative.StyleSheet.create({
+  const styles4 = React3.useMemo(() => reactNative.StyleSheet.create({
     badge: {
       flexDirection: "row",
       alignItems: "center",
@@ -690,7 +745,7 @@ function StatusBadge({ status, size = "medium" }) {
     reactNative.View,
     {
       style: [
-        styles3.badge,
+        styles4.badge,
         {
           backgroundColor: color + "18",
           paddingVertical: isSmall ? 3 : 5,
@@ -703,7 +758,7 @@ function StatusBadge({ status, size = "medium" }) {
           reactNative.View,
           {
             style: [
-              styles3.dot,
+              styles4.dot,
               {
                 backgroundColor: color,
                 width: isSmall ? 6 : 8,
@@ -717,7 +772,7 @@ function StatusBadge({ status, size = "medium" }) {
           reactNative.Text,
           {
             style: [
-              styles3.label,
+              styles4.label,
               {
                 color,
                 fontSize: isSmall ? theme.typography.sizeXs : theme.typography.sizeSm,
@@ -732,12 +787,8 @@ function StatusBadge({ status, size = "medium" }) {
   );
 }
 function formatCount(count) {
-  if (count >= 1e6) {
-    return (count / 1e6).toFixed(1) + "M";
-  }
-  if (count >= 1e3) {
-    return (count / 1e3).toFixed(1) + "K";
-  }
+  if (count >= 1e6) return (count / 1e6).toFixed(1) + "M";
+  if (count >= 1e3) return (count / 1e3).toFixed(1) + "K";
   return String(count);
 }
 function UpvoteButton({
@@ -747,40 +798,6 @@ function UpvoteButton({
   size = "medium"
 }) {
   const theme = useTheme();
-  const scaleAnim = react.useRef(new reactNative.Animated.Value(1)).current;
-  const styles3 = react.useMemo(() => reactNative.StyleSheet.create({
-    container: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 8
-    },
-    arrow: {
-      width: 0,
-      height: 0,
-      backgroundColor: "transparent",
-      borderStyle: "solid",
-      borderLeftColor: "transparent",
-      borderRightColor: "transparent"
-    },
-    count: {
-      fontWeight: "700"
-    }
-  }), []);
-  const handlePress = () => {
-    reactNative.Animated.sequence([
-      reactNative.Animated.spring(scaleAnim, {
-        toValue: 1.2,
-        useNativeDriver: true,
-        friction: 3
-      }),
-      reactNative.Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 3
-      })
-    ]).start();
-    onPress();
-  };
   const sizeConfig = {
     small: { width: 44, height: 52, iconSize: 12, textSize: theme.typography.sizeSm },
     medium: { width: 52, height: 62, iconSize: 14, textSize: theme.typography.sizeMd },
@@ -789,70 +806,80 @@ function UpvoteButton({
   const config = sizeConfig[size];
   const activeColor = hasUpvoted ? theme.colors.upvoteActive : theme.colors.upvote;
   const bgColor = hasUpvoted ? theme.colors.upvoteActive + "15" : theme.colors.backgroundSecondary;
-  return /* @__PURE__ */ jsxRuntime.jsx(
-    reactNative.TouchableOpacity,
+  return /* @__PURE__ */ jsxRuntime.jsx(reactNative.Pressable, { onPress, children: /* @__PURE__ */ jsxRuntime.jsxs(
+    reactNative.View,
     {
-      onPress: handlePress,
-      activeOpacity: 0.7,
-      children: /* @__PURE__ */ jsxRuntime.jsxs(
-        reactNative.Animated.View,
+      style: [
+        styles.container,
         {
-          style: [
-            styles3.container,
-            {
-              width: config.width,
-              height: config.height,
-              backgroundColor: bgColor,
-              borderRadius: theme.borderRadius.md,
-              borderWidth: hasUpvoted ? 1.5 : 0,
-              borderColor: hasUpvoted ? theme.colors.upvoteActive : "transparent",
-              transform: [{ scale: scaleAnim }]
-            }
-          ],
-          children: [
-            /* @__PURE__ */ jsxRuntime.jsx(
-              reactNative.View,
-              {
-                style: [
-                  styles3.arrow,
-                  {
-                    borderLeftWidth: config.iconSize * 0.6,
-                    borderRightWidth: config.iconSize * 0.6,
-                    borderBottomWidth: config.iconSize,
-                    borderBottomColor: activeColor
-                  }
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxRuntime.jsx(
-              reactNative.Text,
-              {
-                style: [
-                  styles3.count,
-                  {
-                    color: activeColor,
-                    fontSize: config.textSize,
-                    fontFamily: theme.typography.fontFamilyBold,
-                    marginTop: theme.spacing.xs
-                  }
-                ],
-                children: formatCount(count)
-              }
-            )
-          ]
+          width: config.width,
+          height: config.height,
+          backgroundColor: bgColor,
+          borderRadius: theme.borderRadius.md,
+          borderWidth: hasUpvoted ? 1.5 : 0,
+          borderColor: hasUpvoted ? theme.colors.upvoteActive : "transparent"
         }
-      )
+      ],
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx(
+          reactNative.View,
+          {
+            style: [
+              styles.arrow,
+              {
+                borderLeftWidth: config.iconSize * 0.6,
+                borderRightWidth: config.iconSize * 0.6,
+                borderBottomWidth: config.iconSize,
+                borderBottomColor: activeColor
+              }
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          reactNative.Text,
+          {
+            style: [
+              styles.count,
+              {
+                color: activeColor,
+                fontSize: config.textSize,
+                fontFamily: theme.typography.fontFamilyBold,
+                marginTop: theme.spacing.xs
+              }
+            ],
+            children: formatCount(count)
+          }
+        )
+      ]
     }
-  );
+  ) });
 }
-function FeatureCard({ feature }) {
+var styles = reactNative.StyleSheet.create({
+  container: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8
+  },
+  arrow: {
+    width: 0,
+    height: 0,
+    backgroundColor: "transparent",
+    borderStyle: "solid",
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent"
+  },
+  count: {
+    fontWeight: "700"
+  }
+});
+var FeatureCard = React3__default.default.memo(function FeatureCard2({ feature }) {
   const theme = useTheme();
   const user = useUser();
   const isAuthor = !!user && !!feature.createdByEndUserId && user.id === feature.createdByEndUserId;
-  const handleUpvote = () => {
+  const handleUpvote = React3.useCallback(() => {
     store.getState().toggleUpvote(feature.id);
-  };
-  const handleDelete = () => {
+  }, [feature.id]);
+  const handleDelete = React3.useCallback(() => {
     reactNative.Alert.alert(
       "Delete Feature",
       "Are you sure you want to delete this feature request?",
@@ -865,12 +892,12 @@ function FeatureCard({ feature }) {
         }
       ]
     );
-  };
+  }, [feature.id]);
   return /* @__PURE__ */ jsxRuntime.jsx(
     reactNative.View,
     {
       style: [
-        styles.container,
+        styles2.container,
         {
           backgroundColor: theme.colors.surface,
           borderRadius: 12,
@@ -880,7 +907,7 @@ function FeatureCard({ feature }) {
           borderColor: theme.colors.border
         }
       ],
-      children: /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles.row, children: [
+      children: /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.row, children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           UpvoteButton,
           {
@@ -917,7 +944,7 @@ function FeatureCard({ feature }) {
               children: feature.description
             }
           ),
-          /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles.footer, children: [
+          /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.footer, children: [
             /* @__PURE__ */ jsxRuntime.jsx(StatusBadge, { status: feature.status, size: "small" }),
             isAuthor && /* @__PURE__ */ jsxRuntime.jsx(
               reactNative.TouchableOpacity,
@@ -925,7 +952,7 @@ function FeatureCard({ feature }) {
                 onPress: handleDelete,
                 hitSlop: { top: 8, bottom: 8, left: 8, right: 8 },
                 style: [
-                  styles.deleteButton,
+                  styles2.deleteButton,
                   {
                     backgroundColor: theme.colors.error + "12",
                     borderRadius: 6
@@ -939,8 +966,8 @@ function FeatureCard({ feature }) {
       ] })
     }
   );
-}
-var styles = reactNative.StyleSheet.create({
+});
+var styles2 = reactNative.StyleSheet.create({
   container: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -977,13 +1004,13 @@ function FeatureBoard() {
   const hasMore = useStore((s) => s.featuresHasMore);
   const roadmapFeatures = useRoadmapFeatures();
   const roadmapLoading = useRoadmapLoading();
-  const [activeTab, setActiveTab] = react.useState("features");
-  react.useEffect(() => {
+  const [activeTab, setActiveTab] = React3.useState("features");
+  React3.useEffect(() => {
     if (activeTab === "roadmap" && roadmapFeatures.length === 0) {
       store.getState().loadRoadmap();
     }
   }, [activeTab]);
-  const roadmapSections = react.useMemo(() => {
+  const roadmapSections = React3.useMemo(() => {
     return ROADMAP_STATUS_ORDER.map((status) => ({
       title: ROADMAP_STATUS_LABELS[status],
       status,
@@ -1008,8 +1035,12 @@ function FeatureBoard() {
   const handleClose = () => {
     store.getState().close();
   };
+  const renderFeatureItem = React3.useCallback(
+    ({ item }) => /* @__PURE__ */ jsxRuntime.jsx(FeatureCard, { feature: item }),
+    []
+  );
   const isOffline = error === NETWORK_ERROR;
-  const renderOfflineState = () => /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.emptyContainer, children: [
+  const renderOfflineState = () => /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
     /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F4E1}" }),
     /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No internet connection" }),
     /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20, paddingHorizontal: 40 }, children: "Check your connection and try again. You can pull down to refresh once you're back online." }),
@@ -1024,13 +1055,13 @@ function FeatureBoard() {
   ] });
   const renderFeaturesEmpty = () => {
     if (isLoading) {
-      return /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles2.emptyContainer, children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.ActivityIndicator, { size: "large", color: theme.colors.primary }) });
+      return /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles3.emptyContainer, children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.ActivityIndicator, { size: "large", color: theme.colors.primary }) });
     }
     if (isOffline) {
       return renderOfflineState();
     }
     if (error) {
-      return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.emptyContainer, children: [
+      return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F615}" }),
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "Something went wrong" }),
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20 }, children: error }),
@@ -1044,7 +1075,7 @@ function FeatureBoard() {
         )
       ] });
     }
-    return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.emptyContainer, children: [
+    return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 64, marginBottom: 16 }, children: "\u{1F4A1}" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No features yet" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20, paddingHorizontal: 40 }, children: "Be the first to suggest a feature!" })
@@ -1056,13 +1087,13 @@ function FeatureBoard() {
   };
   const renderRoadmapEmpty = () => {
     if (roadmapLoading) {
-      return /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles2.emptyContainer, children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.ActivityIndicator, { size: "large", color: theme.colors.primary }) });
+      return /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles3.emptyContainer, children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.ActivityIndicator, { size: "large", color: theme.colors.primary }) });
     }
     if (isOffline) {
       return renderOfflineState();
     }
     if (error) {
-      return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.emptyContainer, children: [
+      return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F615}" }),
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "Something went wrong" }),
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20 }, children: error }),
@@ -1076,18 +1107,18 @@ function FeatureBoard() {
         )
       ] });
     }
-    return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.emptyContainer, children: [
+    return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 12 }, children: "\u{1F5FA}\uFE0F" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No roadmap items yet" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", paddingHorizontal: 40 }, children: "Check back later for upcoming features and plans." })
     ] });
   };
-  return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles2.container, { backgroundColor: theme.colors.background }], children: [
+  return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles3.container, { backgroundColor: theme.colors.background }], children: [
     /* @__PURE__ */ jsxRuntime.jsxs(
       reactNative.View,
       {
         style: [
-          styles2.header,
+          styles3.header,
           {
             backgroundColor: theme.colors.surface,
             paddingTop: reactNative.Platform.OS === "ios" ? 54 : 16,
@@ -1096,16 +1127,16 @@ function FeatureBoard() {
           }
         ],
         children: [
-          /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.headerRow, children: [
-            /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles2.headerTitle, { color: theme.colors.text }], children: "Features" }),
+          /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.headerRow, children: [
+            /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles3.headerTitle, { color: theme.colors.text }], children: "Features" }),
             /* @__PURE__ */ jsxRuntime.jsx(reactNative.TouchableOpacity, { onPress: handleClose, hitSlop: { top: 10, bottom: 10, left: 10, right: 10 }, children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 22, fontWeight: "300" }, children: "\u2715" }) })
           ] }),
-          /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles2.tabRow, children: [
+          /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.tabRow, children: [
             /* @__PURE__ */ jsxRuntime.jsx(
               reactNative.TouchableOpacity,
               {
                 style: [
-                  styles2.tab,
+                  styles3.tab,
                   activeTab === "features" && { borderBottomWidth: 2, borderBottomColor: theme.colors.primary }
                 ],
                 onPress: () => setActiveTab("features"),
@@ -1113,7 +1144,7 @@ function FeatureBoard() {
                   reactNative.Text,
                   {
                     style: [
-                      styles2.tabText,
+                      styles3.tabText,
                       {
                         color: activeTab === "features" ? theme.colors.primary : theme.colors.textMuted,
                         fontWeight: activeTab === "features" ? "600" : "400"
@@ -1128,7 +1159,7 @@ function FeatureBoard() {
               reactNative.TouchableOpacity,
               {
                 style: [
-                  styles2.tab,
+                  styles3.tab,
                   activeTab === "roadmap" && { borderBottomWidth: 2, borderBottomColor: theme.colors.primary }
                 ],
                 onPress: () => setActiveTab("roadmap"),
@@ -1136,7 +1167,7 @@ function FeatureBoard() {
                   reactNative.Text,
                   {
                     style: [
-                      styles2.tabText,
+                      styles3.tabText,
                       {
                         color: activeTab === "roadmap" ? theme.colors.primary : theme.colors.textMuted,
                         fontWeight: activeTab === "roadmap" ? "600" : "400"
@@ -1151,7 +1182,7 @@ function FeatureBoard() {
         ]
       }
     ),
-    activeTab === "features" && /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles2.banner, { backgroundColor: theme.colors.primary + "08", borderBottomWidth: 1, borderBottomColor: theme.colors.border }], children: [
+    activeTab === "features" && /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles3.banner, { backgroundColor: theme.colors.primary + "08", borderBottomWidth: 1, borderBottomColor: theme.colors.border }], children: [
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 15, marginRight: 10 }, children: "\u{1F4A1}" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 13, flex: 1, lineHeight: 19 }, children: "Suggest and upvote features you'd love to see. Your votes help us decide what to build next." })
     ] }),
@@ -1160,7 +1191,7 @@ function FeatureBoard() {
       {
         data: features,
         keyExtractor: (item) => item.id,
-        renderItem: ({ item }) => /* @__PURE__ */ jsxRuntime.jsx(FeatureCard, { feature: item }),
+        renderItem: renderFeatureItem,
         contentContainerStyle: { padding: 16, paddingTop: 12, flexGrow: 1 },
         ListEmptyComponent: renderFeaturesEmpty,
         ListFooterComponent: renderFeaturesFooter,
@@ -1201,7 +1232,7 @@ function FeatureBoard() {
           reactNative.View,
           {
             style: [
-              styles2.roadmapCard,
+              styles3.roadmapCard,
               {
                 backgroundColor: theme.colors.surface,
                 borderRadius: 12,
@@ -1243,7 +1274,7 @@ function FeatureBoard() {
       reactNative.View,
       {
         style: [
-          styles2.bottomBar,
+          styles3.bottomBar,
           {
             backgroundColor: theme.colors.surface,
             borderTopWidth: 1,
@@ -1255,7 +1286,7 @@ function FeatureBoard() {
           activeTab === "features" && /* @__PURE__ */ jsxRuntime.jsxs(
             reactNative.TouchableOpacity,
             {
-              style: [styles2.addButton, { backgroundColor: theme.colors.text }],
+              style: [styles3.addButton, { backgroundColor: theme.colors.text }],
               onPress: handleAddFeature,
               children: [
                 /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { marginRight: 6, fontSize: 14 }, children: "\u270F\uFE0F" }),
@@ -1269,7 +1300,7 @@ function FeatureBoard() {
     )
   ] });
 }
-var styles2 = reactNative.StyleSheet.create({
+var styles3 = reactNative.StyleSheet.create({
   container: {
     flex: 1
   },
@@ -1329,7 +1360,7 @@ var styles2 = reactNative.StyleSheet.create({
 });
 function Header({ title, showBack = false, rightAction }) {
   const theme = useTheme();
-  const styles3 = react.useMemo(() => reactNative.StyleSheet.create({
+  const styles4 = React3.useMemo(() => reactNative.StyleSheet.create({
     container: {
       flexDirection: "row",
       alignItems: "center",
@@ -1377,7 +1408,7 @@ function Header({ title, showBack = false, rightAction }) {
     reactNative.View,
     {
       style: [
-        styles3.container,
+        styles4.container,
         {
           backgroundColor: theme.colors.surface,
           borderBottomWidth: 1,
@@ -1391,14 +1422,14 @@ function Header({ title, showBack = false, rightAction }) {
         /* @__PURE__ */ jsxRuntime.jsx(
           reactNative.TouchableOpacity,
           {
-            style: styles3.leftButton,
+            style: styles4.leftButton,
             onPress: showBack ? handleBack : handleClose,
             hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
-            children: showBack ? /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles3.backIcon, children: /* @__PURE__ */ jsxRuntime.jsx(
+            children: showBack ? /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles4.backIcon, children: /* @__PURE__ */ jsxRuntime.jsx(
               reactNative.View,
               {
                 style: [
-                  styles3.chevron,
+                  styles4.chevron,
                   {
                     borderColor: theme.colors.text
                   }
@@ -1411,7 +1442,7 @@ function Header({ title, showBack = false, rightAction }) {
           reactNative.Text,
           {
             style: [
-              styles3.title,
+              styles4.title,
               {
                 color: theme.colors.text,
                 fontSize: theme.typography.sizeLg,
@@ -1422,7 +1453,7 @@ function Header({ title, showBack = false, rightAction }) {
             children: title
           }
         ),
-        /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles3.rightButton, children: rightAction })
+        /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles4.rightButton, children: rightAction })
       ]
     }
   );
@@ -1433,10 +1464,10 @@ function AddFeature() {
   const theme = useTheme();
   const isLoading = useIsLoading();
   const error = useError();
-  const [title, setTitle] = react.useState("");
-  const [description, setDescription] = react.useState("");
-  const [touched, setTouched] = react.useState({ title: false, description: false });
-  const styles3 = react.useMemo(() => reactNative.StyleSheet.create({
+  const [title, setTitle] = React3.useState("");
+  const [description, setDescription] = React3.useState("");
+  const [touched, setTouched] = React3.useState({ title: false, description: false });
+  const styles4 = React3.useMemo(() => reactNative.StyleSheet.create({
     container: {
       flex: 1
     },
@@ -1486,7 +1517,7 @@ function AddFeature() {
     {
       style: { flex: 1 },
       behavior: reactNative.Platform.OS === "ios" ? "padding" : void 0,
-      children: /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles3.container, { backgroundColor: theme.colors.background }], children: [
+      children: /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles4.container, { backgroundColor: theme.colors.background }], children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           Header,
           {
@@ -1497,7 +1528,7 @@ function AddFeature() {
         /* @__PURE__ */ jsxRuntime.jsxs(
           reactNative.ScrollView,
           {
-            style: styles3.scrollView,
+            style: styles4.scrollView,
             contentContainerStyle: { padding: theme.spacing.md },
             showsVerticalScrollIndicator: false,
             keyboardShouldPersistTaps: "handled",
@@ -1506,7 +1537,7 @@ function AddFeature() {
                 reactNative.View,
                 {
                   style: [
-                    styles3.errorBanner,
+                    styles4.errorBanner,
                     {
                       backgroundColor: (error === NETWORK_ERROR ? theme.colors.warning : theme.colors.error) + "15",
                       borderRadius: theme.borderRadius.md,
@@ -1526,8 +1557,8 @@ function AddFeature() {
                   ]
                 }
               ),
-              /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.inputGroup, children: [
-                /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.labelRow, children: [
+              /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles4.inputGroup, children: [
+                /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles4.labelRow, children: [
                   /* @__PURE__ */ jsxRuntime.jsx(
                     reactNative.Text,
                     {
@@ -1558,7 +1589,7 @@ function AddFeature() {
                   reactNative.TextInput,
                   {
                     style: [
-                      styles3.input,
+                      styles4.input,
                       {
                         backgroundColor: theme.colors.surface,
                         borderRadius: theme.borderRadius.md,
@@ -1590,8 +1621,8 @@ function AddFeature() {
                   }
                 )
               ] }),
-              /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles3.inputGroup, { marginTop: theme.spacing.lg }], children: [
-                /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.labelRow, children: [
+              /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: [styles4.inputGroup, { marginTop: theme.spacing.lg }], children: [
+                /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles4.labelRow, children: [
                   /* @__PURE__ */ jsxRuntime.jsx(
                     reactNative.Text,
                     {
@@ -1633,7 +1664,7 @@ function AddFeature() {
                   reactNative.TextInput,
                   {
                     style: [
-                      styles3.textArea,
+                      styles4.textArea,
                       {
                         backgroundColor: theme.colors.surface,
                         borderRadius: theme.borderRadius.md,
@@ -1672,7 +1703,7 @@ function AddFeature() {
                 reactNative.View,
                 {
                   style: [
-                    styles3.tipsCard,
+                    styles4.tipsCard,
                     {
                       backgroundColor: theme.colors.info + "10",
                       borderRadius: theme.borderRadius.md,
@@ -1693,11 +1724,11 @@ function AddFeature() {
                         children: "\u{1F4A1} Tips for a great feature request"
                       }
                     ),
-                    /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.tipsList, children: [
-                      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles3.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Be specific about what you want" }),
-                      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles3.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Explain the problem it solves" }),
-                      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles3.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Describe how it would benefit others" }),
-                      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles3.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Search for existing requests first" })
+                    /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles4.tipsList, children: [
+                      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles4.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Be specific about what you want" }),
+                      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles4.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Explain the problem it solves" }),
+                      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles4.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Describe how it would benefit others" }),
+                      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles4.tipItem, { color: theme.colors.textSecondary }], children: "\u2022 Search for existing requests first" })
                     ] })
                   ]
                 }
@@ -1709,7 +1740,7 @@ function AddFeature() {
           reactNative.View,
           {
             style: [
-              styles3.bottomBar,
+              styles4.bottomBar,
               {
                 backgroundColor: theme.colors.surface,
                 borderTopWidth: 1,
@@ -1722,7 +1753,7 @@ function AddFeature() {
               reactNative.TouchableOpacity,
               {
                 style: [
-                  styles3.submitButton,
+                  styles4.submitButton,
                   {
                     backgroundColor: isValid ? theme.colors.primary : theme.colors.backgroundSecondary,
                     borderRadius: theme.borderRadius.md,
@@ -1794,12 +1825,12 @@ function FeatureDeckProvider({
   theme: customTheme
 }) {
   const storeTheme = useThemeStore();
-  react.useEffect(() => {
+  React3.useEffect(() => {
     if (customTheme) {
       store.getState().setTheme(customTheme);
     }
   }, [customTheme]);
-  react.useEffect(() => {
+  React3.useEffect(() => {
     startEventTracker();
     return () => stopEventTracker();
   }, []);
