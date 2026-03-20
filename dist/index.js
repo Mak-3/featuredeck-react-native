@@ -744,6 +744,9 @@ function StatusBadge({ status, size = "medium" }) {
   return /* @__PURE__ */ jsxRuntime.jsxs(
     reactNative.View,
     {
+      accessible: true,
+      accessibilityRole: "text",
+      accessibilityLabel: `Status: ${label}`,
       style: [
         styles4.badge,
         {
@@ -757,6 +760,8 @@ function StatusBadge({ status, size = "medium" }) {
         /* @__PURE__ */ jsxRuntime.jsx(
           reactNative.View,
           {
+            importantForAccessibility: "no-hide-descendants",
+            accessibilityElementsHidden: true,
             style: [
               styles4.dot,
               {
@@ -806,53 +811,64 @@ function UpvoteButton({
   const config = sizeConfig[size];
   const activeColor = hasUpvoted ? theme.colors.upvoteActive : theme.colors.upvote;
   const bgColor = hasUpvoted ? theme.colors.upvoteActive + "15" : theme.colors.backgroundSecondary;
-  return /* @__PURE__ */ jsxRuntime.jsx(reactNative.Pressable, { onPress, children: /* @__PURE__ */ jsxRuntime.jsxs(
-    reactNative.View,
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    reactNative.Pressable,
     {
-      style: [
-        styles.container,
+      onPress,
+      accessibilityRole: "button",
+      accessibilityLabel: `${hasUpvoted ? "Remove upvote" : "Upvote"}, ${count} ${count === 1 ? "vote" : "votes"}`,
+      accessibilityState: { selected: hasUpvoted },
+      children: /* @__PURE__ */ jsxRuntime.jsxs(
+        reactNative.View,
         {
-          width: config.width,
-          height: config.height,
-          backgroundColor: bgColor,
-          borderRadius: theme.borderRadius.md,
-          borderWidth: hasUpvoted ? 1.5 : 0,
-          borderColor: hasUpvoted ? theme.colors.upvoteActive : "transparent"
+          style: [
+            styles.container,
+            {
+              width: config.width,
+              height: config.height,
+              backgroundColor: bgColor,
+              borderRadius: theme.borderRadius.md,
+              borderWidth: hasUpvoted ? 1.5 : 0,
+              borderColor: hasUpvoted ? theme.colors.upvoteActive : "transparent"
+            }
+          ],
+          children: [
+            /* @__PURE__ */ jsxRuntime.jsx(
+              reactNative.View,
+              {
+                importantForAccessibility: "no-hide-descendants",
+                accessibilityElementsHidden: true,
+                style: [
+                  styles.arrow,
+                  {
+                    borderLeftWidth: config.iconSize * 0.6,
+                    borderRightWidth: config.iconSize * 0.6,
+                    borderBottomWidth: config.iconSize,
+                    borderBottomColor: activeColor
+                  }
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              reactNative.Text,
+              {
+                style: [
+                  styles.count,
+                  {
+                    color: activeColor,
+                    fontSize: config.textSize,
+                    fontFamily: theme.typography.fontFamilyBold,
+                    marginTop: theme.spacing.xs
+                  }
+                ],
+                children: formatCount(count)
+              }
+            )
+          ]
         }
-      ],
-      children: [
-        /* @__PURE__ */ jsxRuntime.jsx(
-          reactNative.View,
-          {
-            style: [
-              styles.arrow,
-              {
-                borderLeftWidth: config.iconSize * 0.6,
-                borderRightWidth: config.iconSize * 0.6,
-                borderBottomWidth: config.iconSize,
-                borderBottomColor: activeColor
-              }
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          reactNative.Text,
-          {
-            style: [
-              styles.count,
-              {
-                color: activeColor,
-                fontSize: config.textSize,
-                fontFamily: theme.typography.fontFamilyBold,
-                marginTop: theme.spacing.xs
-              }
-            ],
-            children: formatCount(count)
-          }
-        )
-      ]
+      )
     }
-  ) });
+  );
 }
 var styles = reactNative.StyleSheet.create({
   container: {
@@ -896,6 +912,8 @@ var FeatureCard = React3__default.default.memo(function FeatureCard2({ feature }
   return /* @__PURE__ */ jsxRuntime.jsx(
     reactNative.View,
     {
+      accessible: true,
+      accessibilityLabel: `${feature.title}. ${feature.description || ""}. ${feature.upvotesCount} ${feature.upvotesCount === 1 ? "vote" : "votes"}. Status: ${feature.status}`,
       style: [
         styles2.container,
         {
@@ -951,6 +969,8 @@ var FeatureCard = React3__default.default.memo(function FeatureCard2({ feature }
               {
                 onPress: handleDelete,
                 hitSlop: { top: 8, bottom: 8, left: 8, right: 8 },
+                accessibilityRole: "button",
+                accessibilityLabel: `Delete feature: ${feature.title}`,
                 style: [
                   styles2.deleteButton,
                   {
@@ -1040,8 +1060,8 @@ function FeatureBoard() {
     []
   );
   const isOffline = error === NETWORK_ERROR;
-  const renderOfflineState = () => /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
-    /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F4E1}" }),
+  const renderOfflineState = () => /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, accessibilityLiveRegion: "polite", children: [
+    /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, accessibilityElementsHidden: true, children: "\u{1F4E1}" }),
     /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No internet connection" }),
     /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20, paddingHorizontal: 40 }, children: "Check your connection and try again. You can pull down to refresh once you're back online." }),
     /* @__PURE__ */ jsxRuntime.jsx(
@@ -1049,6 +1069,8 @@ function FeatureBoard() {
       {
         style: { backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 },
         onPress: handleRefresh,
+        accessibilityRole: "button",
+        accessibilityLabel: "Retry loading",
         children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textInverse, fontWeight: "600" }, children: "Retry" })
       }
     )
@@ -1061,8 +1083,8 @@ function FeatureBoard() {
       return renderOfflineState();
     }
     if (error) {
-      return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
-        /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F615}" }),
+      return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, accessibilityLiveRegion: "assertive", children: [
+        /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, accessibilityElementsHidden: true, children: "\u{1F615}" }),
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "Something went wrong" }),
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20 }, children: error }),
         /* @__PURE__ */ jsxRuntime.jsx(
@@ -1070,13 +1092,15 @@ function FeatureBoard() {
           {
             style: { backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 },
             onPress: handleRefresh,
+            accessibilityRole: "button",
+            accessibilityLabel: "Try again",
             children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textInverse, fontWeight: "600" }, children: "Try Again" })
           }
         )
       ] });
     }
     return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
-      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 64, marginBottom: 16 }, children: "\u{1F4A1}" }),
+      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 64, marginBottom: 16 }, accessibilityElementsHidden: true, children: "\u{1F4A1}" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No features yet" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20, paddingHorizontal: 40 }, children: "Be the first to suggest a feature!" })
     ] });
@@ -1093,8 +1117,8 @@ function FeatureBoard() {
       return renderOfflineState();
     }
     if (error) {
-      return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
-        /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, children: "\u{1F615}" }),
+      return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, accessibilityLiveRegion: "assertive", children: [
+        /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 16 }, accessibilityElementsHidden: true, children: "\u{1F615}" }),
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "Something went wrong" }),
         /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 20 }, children: error }),
         /* @__PURE__ */ jsxRuntime.jsx(
@@ -1102,13 +1126,15 @@ function FeatureBoard() {
           {
             style: { backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 },
             onPress: handleRefresh,
+            accessibilityRole: "button",
+            accessibilityLabel: "Try again",
             children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textInverse, fontWeight: "600" }, children: "Try Again" })
           }
         )
       ] });
     }
     return /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.emptyContainer, children: [
-      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 12 }, children: "\u{1F5FA}\uFE0F" }),
+      /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 48, marginBottom: 12 }, accessibilityElementsHidden: true, children: "\u{1F5FA}\uFE0F" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.text, fontSize: 16, fontWeight: "600", marginBottom: 8 }, children: "No roadmap items yet" }),
       /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center", paddingHorizontal: 40 }, children: "Check back later for upcoming features and plans." })
     ] });
@@ -1128,10 +1154,19 @@ function FeatureBoard() {
         ],
         children: [
           /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.headerRow, children: [
-            /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: [styles3.headerTitle, { color: theme.colors.text }], children: "Features" }),
-            /* @__PURE__ */ jsxRuntime.jsx(reactNative.TouchableOpacity, { onPress: handleClose, hitSlop: { top: 10, bottom: 10, left: 10, right: 10 }, children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 22, fontWeight: "300" }, children: "\u2715" }) })
+            /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { accessibilityRole: "header", style: [styles3.headerTitle, { color: theme.colors.text }], children: "Features" }),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              reactNative.TouchableOpacity,
+              {
+                onPress: handleClose,
+                hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
+                accessibilityRole: "button",
+                accessibilityLabel: "Close",
+                children: /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textSecondary, fontSize: 22, fontWeight: "300" }, children: "\u2715" })
+              }
+            )
           ] }),
-          /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.tabRow, children: [
+          /* @__PURE__ */ jsxRuntime.jsxs(reactNative.View, { style: styles3.tabRow, accessibilityRole: "tablist", children: [
             /* @__PURE__ */ jsxRuntime.jsx(
               reactNative.TouchableOpacity,
               {
@@ -1140,6 +1175,9 @@ function FeatureBoard() {
                   activeTab === "features" && { borderBottomWidth: 2, borderBottomColor: theme.colors.primary }
                 ],
                 onPress: () => setActiveTab("features"),
+                accessibilityRole: "tab",
+                accessibilityState: { selected: activeTab === "features" },
+                accessibilityLabel: "Features",
                 children: /* @__PURE__ */ jsxRuntime.jsx(
                   reactNative.Text,
                   {
@@ -1163,6 +1201,9 @@ function FeatureBoard() {
                   activeTab === "roadmap" && { borderBottomWidth: 2, borderBottomColor: theme.colors.primary }
                 ],
                 onPress: () => setActiveTab("roadmap"),
+                accessibilityRole: "tab",
+                accessibilityState: { selected: activeTab === "roadmap" },
+                accessibilityLabel: "Roadmap",
                 children: /* @__PURE__ */ jsxRuntime.jsx(
                   reactNative.Text,
                   {
@@ -1216,6 +1257,7 @@ function FeatureBoard() {
         renderSectionHeader: ({ section }) => /* @__PURE__ */ jsxRuntime.jsx(
           reactNative.Text,
           {
+            accessibilityRole: "header",
             style: {
               color: theme.colors.text,
               fontSize: 15,
@@ -1288,8 +1330,10 @@ function FeatureBoard() {
             {
               style: [styles3.addButton, { backgroundColor: theme.colors.text }],
               onPress: handleAddFeature,
+              accessibilityRole: "button",
+              accessibilityLabel: "Add a new feature request",
               children: [
-                /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { marginRight: 6, fontSize: 14 }, children: "\u270F\uFE0F" }),
+                /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { marginRight: 6, fontSize: 14 }, accessibilityElementsHidden: true, children: "\u270F\uFE0F" }),
                 /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { color: theme.colors.textInverse, fontSize: 15, fontWeight: "600" }, children: "Add Feature" })
               ]
             }
@@ -1425,6 +1469,8 @@ function Header({ title, showBack = false, rightAction }) {
             style: styles4.leftButton,
             onPress: showBack ? handleBack : handleClose,
             hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
+            accessibilityRole: "button",
+            accessibilityLabel: showBack ? "Go back" : "Close",
             children: showBack ? /* @__PURE__ */ jsxRuntime.jsx(reactNative.View, { style: styles4.backIcon, children: /* @__PURE__ */ jsxRuntime.jsx(
               reactNative.View,
               {
@@ -1441,6 +1487,7 @@ function Header({ title, showBack = false, rightAction }) {
         /* @__PURE__ */ jsxRuntime.jsx(
           reactNative.Text,
           {
+            accessibilityRole: "header",
             style: [
               styles4.title,
               {
@@ -1536,6 +1583,9 @@ function AddFeature() {
               error && /* @__PURE__ */ jsxRuntime.jsxs(
                 reactNative.View,
                 {
+                  accessible: true,
+                  accessibilityRole: "alert",
+                  accessibilityLiveRegion: "assertive",
                   style: [
                     styles4.errorBanner,
                     {
@@ -1548,7 +1598,7 @@ function AddFeature() {
                     }
                   ],
                   children: [
-                    /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 16, marginRight: 8 }, children: error === NETWORK_ERROR ? "\u{1F4E1}" : "\u26A0\uFE0F" }),
+                    /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: { fontSize: 16, marginRight: 8 }, accessibilityElementsHidden: true, children: error === NETWORK_ERROR ? "\u{1F4E1}" : "\u26A0\uFE0F" }),
                     /* @__PURE__ */ jsxRuntime.jsx(reactNative.Text, { style: {
                       color: error === NETWORK_ERROR ? theme.colors.warning : theme.colors.error,
                       fontSize: theme.typography.sizeSm,
@@ -1606,12 +1656,16 @@ function AddFeature() {
                     value: title,
                     onChangeText: (text) => setTitle(text.slice(0, MAX_TITLE_LENGTH)),
                     onBlur: () => setTouched((t) => ({ ...t, title: true })),
-                    maxLength: MAX_TITLE_LENGTH
+                    maxLength: MAX_TITLE_LENGTH,
+                    accessibilityLabel: "Feature title",
+                    accessibilityHint: "Enter a short title for your feature request"
                   }
                 ),
                 titleError && /* @__PURE__ */ jsxRuntime.jsx(
                   reactNative.Text,
                   {
+                    accessibilityLiveRegion: "polite",
+                    accessibilityRole: "alert",
                     style: {
                       color: theme.colors.error,
                       fontSize: theme.typography.sizeSm,
@@ -1684,12 +1738,16 @@ function AddFeature() {
                     multiline: true,
                     numberOfLines: 6,
                     textAlignVertical: "top",
-                    maxLength: MAX_DESCRIPTION_LENGTH
+                    maxLength: MAX_DESCRIPTION_LENGTH,
+                    accessibilityLabel: "Feature description",
+                    accessibilityHint: "Describe the feature in detail, minimum 20 characters"
                   }
                 ),
                 descriptionError && /* @__PURE__ */ jsxRuntime.jsx(
                   reactNative.Text,
                   {
+                    accessibilityLiveRegion: "polite",
+                    accessibilityRole: "alert",
                     style: {
                       color: theme.colors.error,
                       fontSize: theme.typography.sizeSm,
@@ -1762,6 +1820,9 @@ function AddFeature() {
                 ],
                 onPress: handleSubmit,
                 disabled: !isValid || isLoading,
+                accessibilityRole: "button",
+                accessibilityLabel: isLoading ? "Submitting feature request" : "Submit feature request",
+                accessibilityState: { disabled: !isValid || isLoading, busy: isLoading },
                 children: isLoading ? /* @__PURE__ */ jsxRuntime.jsx(reactNative.ActivityIndicator, { size: "small", color: theme.colors.textInverse }) : /* @__PURE__ */ jsxRuntime.jsx(
                   reactNative.Text,
                   {
@@ -1816,6 +1877,7 @@ function FeedbackModal() {
       presentationStyle: "pageSheet",
       visible,
       onRequestClose: () => store.getState().close(),
+      accessibilityViewIsModal: true,
       children: /* @__PURE__ */ jsxRuntime.jsx(ModalContent, {})
     }
   );

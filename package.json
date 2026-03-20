@@ -1,6 +1,6 @@
 {
   "name": "@featuredeck/react-native",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Beautiful in-app feedback SDK for React Native - feature requests, upvotes, comments & roadmap",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

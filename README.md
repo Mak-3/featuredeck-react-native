@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
 
 ## Need Help?
 
-- Email: [support@featuredeck.in](mailto:support@featuredeck.in)
+- Email: [featuredeck.support@gmail.com](mailto:featuredeck.support@gmail.com)
 - GitHub: [github.com/Mak-3/featuredeck-react-native](https://github.com/Mak-3/featuredeck-react-native)
 - Check out the example app in the repository
 
