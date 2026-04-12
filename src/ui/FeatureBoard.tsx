@@ -20,10 +20,10 @@ type Tab = 'features' | 'roadmap';
 
 const ROADMAP_STATUS_ORDER: RoadmapFeatureStatus[] = ['in_progress', 'planned', 'completed', 'cancelled'];
 const ROADMAP_STATUS_LABELS: Record<RoadmapFeatureStatus, string> = {
-  planned: '📋 Planned',
-  in_progress: '🚧 In Progress',
-  completed: '✅ Completed',
-  cancelled: '❌ Cancelled',
+  planned: 'Planned',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
 };
 
 export function FeatureBoard() {
@@ -83,7 +83,6 @@ export function FeatureBoard() {
 
   const renderOfflineState = () => (
     <View style={styles.emptyContainer} accessibilityLiveRegion="polite">
-      <Text style={{ fontSize: 48, marginBottom: 16 }} accessibilityElementsHidden>📡</Text>
       <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
         No internet connection
       </Text>
@@ -117,7 +116,6 @@ export function FeatureBoard() {
     if (error) {
       return (
         <View style={styles.emptyContainer} accessibilityLiveRegion="assertive">
-          <Text style={{ fontSize: 48, marginBottom: 16 }} accessibilityElementsHidden>😕</Text>
           <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
             Something went wrong
           </Text>
@@ -138,7 +136,6 @@ export function FeatureBoard() {
 
     return (
       <View style={styles.emptyContainer}>
-        <Text style={{ fontSize: 64, marginBottom: 16 }} accessibilityElementsHidden>💡</Text>
         <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
           No features yet
         </Text>
@@ -174,7 +171,6 @@ export function FeatureBoard() {
     if (error) {
       return (
         <View style={styles.emptyContainer} accessibilityLiveRegion="assertive">
-          <Text style={{ fontSize: 48, marginBottom: 16 }} accessibilityElementsHidden>😕</Text>
           <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
             Something went wrong
           </Text>
@@ -195,7 +191,6 @@ export function FeatureBoard() {
 
     return (
       <View style={styles.emptyContainer}>
-        <Text style={{ fontSize: 48, marginBottom: 12 }} accessibilityElementsHidden>🗺️</Text>
         <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
           No roadmap items yet
         </Text>

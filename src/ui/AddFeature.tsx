@@ -119,9 +119,6 @@ export function AddFeature() {
                 },
               ]}
             >
-              <Text style={{ fontSize: 16, marginRight: 8 }} accessibilityElementsHidden>
-                {error === NETWORK_ERROR ? '📡' : '⚠️'}
-              </Text>
               <Text style={{
                 color: error === NETWORK_ERROR ? theme.colors.warning : theme.colors.error,
                 fontSize: theme.typography.sizeSm,
